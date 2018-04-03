@@ -21,19 +21,40 @@ using GLib;
 
 namespace Vocal {
 
-	public class Episode {
+	public class Episode : Object {
+
+        public signal void played_status_updated();
 
 		public string           title = "";              // the title of the episode
 		public string           description = "";        // the description/shownotes
 		public string           uri = "";                // the remote location for the media file
 		public string           local_uri = "";          // the local location for the media file, if any
 		public double           last_played_position;    // the latest position that has been played
-		public string           date_released;           // when the episode was released, in string form
-		public EpisodeStatus    status;                  // whether the episode is played or unplayed
+        public string           date_released;           // when the episode was released, in string form
+        private EpisodeStatus   _status;
+		public EpisodeStatus    status {
+            get {
+                return _status;
+            }
+            set {
+                _status = value;
+                played_status_updated();
+            }
+        }
 		public DownloadStatus	current_download_status; // whether the episode is downloaded or not downloaded
 
 		public Podcast          parent;                  // the parent that the episode belongs to
-		public DateTime         datetime_released;       // the datetime corresponding the when the episode was released
+        public DateTime         datetime_released;       // the datetime corresponding the when the episode was released
+
+        //  public void mark_as_unplayed() {
+        //      status = EpisodeStatus.UNPLAYED;
+
+        //  }
+
+        //  public void mark_as_played() {
+        //      status = EpisodeStatus.PLAYED;
+        //      status_updated();
+        //  }
 
 		/*
 		 * Gets the playback uri based on whether the file is local or remote
@@ -45,31 +66,25 @@ namespace Vocal {
         public string playback_uri {
 
             get {
-
                 GLib.File local;
 
                 if(local_uri != null) {
-
                     if(local_uri.contains("file://"))
                         local = GLib.File.new_for_uri(local_uri);
                     else
                         local = GLib.File.new_for_uri("file://" + local_uri);
                     if(local.query_exists()) {
-
-                        if(local_uri.contains("file://"))
+                        if(local_uri.contains("file://")) {
                             return local_uri;
-                        else {
+                        } else {
                             local_uri = "file://" + local_uri;
                             return local_uri;
                         }
 
                     } else {
-
                         return uri;
                     }
-                }
-
-                else {
+                } else {
                     return uri;
                 }
 
@@ -126,6 +141,27 @@ namespace Vocal {
      */
     public enum EpisodeStatus {
         PLAYED, UNPLAYED;
+
+        public string to_string () {
+            switch (this) {
+            case EpisodeStatus.PLAYED:
+                return "played";
+            case EpisodeStatus.UNPLAYED:
+                return "unplayed";
+            default:
+                error("Unrecognized episode status");
+            }
+        }
+    
+        public static EpisodeStatus from_string (string str) {
+            if (str == "played") {
+                return EpisodeStatus.PLAYED;
+            } else if (str == "unplayed") {
+                return EpisodeStatus.UNPLAYED;
+            } else {
+                error ("Unrecognized episode status: %s", str);
+            }
+        }
     }
 
     /*

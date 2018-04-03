@@ -348,17 +348,13 @@ namespace Vocal {
 		}
 
         public void hide_download_button() {
-            if(download != null) {
-            	this.download.set_no_show_all(true);
-                this.download.hide();
-            }
+            download.set_no_show_all(true);
+            download.hide();
         }
 
         public void show_download_button() {
-            if(download != null) {
-            	this.download.set_no_show_all(false);
-                this.download.show();
-            }
+            download.set_no_show_all(false);
+            download.show();
         }
 
         public void set_play_pause_image(Gtk.Image new_img) {

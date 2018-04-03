@@ -18,8 +18,6 @@
 ***/
 
 using Clutter;
-using Gtk;
-using Gdk;
 using Granite;
 using Granite.Services;
 using Granite.Widgets;
@@ -40,7 +38,7 @@ namespace Vocal {
         private DirectoryView directory;
         public SearchResultsView search_results_view;
         private Gtk.Stack notebook;
-        public PodcastView details;
+        public PodcastView podcast_view;
         private Gtk.Box import_message_box;
 
         /* Secondary widgets */
@@ -58,8 +56,7 @@ namespace Vocal {
 
         /* Icon views and related variables */
 
-        public Gtk.FlowBox all_flowbox;
-        public Gtk.ScrolledWindow all_scrolled;
+        public AllPodcastsView all_podcasts_view;
         public Gtk.ScrolledWindow directory_scrolled;
         public Gtk.ScrolledWindow search_results_scrolled;
 
@@ -75,7 +72,8 @@ namespace Vocal {
         public CoverArt current_episode_art;
         public Gtk.Widget current_widget;
         public Gtk.Widget previous_widget;
-        public Gee.ArrayList<CoverArt> all_art;
+        //  public Gee.ArrayList<CoverArt> all_art;
+
         private bool ignore_window_state_change = false;
         private uint hiding_timer = 0; // Used for hiding video controls
         private bool mouse_primary_down = false;
@@ -275,10 +273,7 @@ namespace Vocal {
             
             info ("Creating podcast view."); 
             
-            details = new PodcastView (controller);
-            details.go_back.connect(() => {
-                switch_visible_page(all_scrolled);
-            });
+            
 
             info ("Creating welcome screen.");
             
@@ -294,39 +289,33 @@ namespace Vocal {
             info ("Creating scrolled containers and album art views.");
 
             // Set up scrolled windows so that content will scoll instead of causing the window to expand
-            all_scrolled = new Gtk.ScrolledWindow (null, null);
             directory_scrolled = new Gtk.ScrolledWindow (null, null);
             search_results_scrolled = new Gtk.ScrolledWindow(null, null);
             search_results_box = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
             search_results_scrolled.add(search_results_box);
-
-		    // Set up the IconView for all podcasts
-		    all_flowbox = new Gtk.FlowBox();
-            all_art = new Gee.ArrayList<CoverArt>();
-            all_flowbox.get_style_context().add_class("notebook-art");
-            all_flowbox.selection_mode = Gtk.SelectionMode.SINGLE;
-            all_flowbox.activate_on_single_click = true;
-            all_flowbox.child_activated.connect(on_child_activated);
-            all_flowbox.valign = Gtk.Align.FILL;
-            all_flowbox.homogeneous = true;
-
-		    all_scrolled.add(all_flowbox);
+            
+            all_podcasts_view = new AllPodcastsView();
+            all_podcasts_view.on_podcast_selected.connect(on_child_activated);
 		    
             // Set up all the signals for the podcast view
-            details.play_episode_requested.connect(play_different_track);
-            details.download_episode_requested.connect(download_episode);
-            details.enqueue_episode.connect(enqueue_episode);
-            details.mark_episode_as_played_requested.connect(on_mark_episode_as_played_request);
-            details.mark_episode_as_unplayed_requested.connect(on_mark_episode_as_unplayed_request);
-            details.delete_local_episode_requested.connect(on_episode_delete_request);
-            details.mark_all_episodes_as_played_requested.connect(on_mark_as_played_request);
-            details.download_all_requested.connect(on_download_all_request);
-            details.delete_podcast_requested.connect(on_remove_request);
-            details.delete_multiple_episodes_requested.connect(on_delete_multiple_episodes);
-            details.mark_multiple_episodes_as_played_requested.connect(on_mark_multiple_episodes_as_played);
-            details.mark_multiple_episodes_as_unplayed_requested.connect(on_mark_multiple_episodes_as_unplayed);
-            details.unplayed_count_changed.connect(on_unplayed_count_changed);
-            details.new_cover_art_set.connect(on_new_cover_art_set);
+            podcast_view = new PodcastView (controller);
+            podcast_view.play_episode_requested.connect(play_different_track);
+            podcast_view.download_episode_requested.connect(download_episode);
+            podcast_view.enqueue_episode.connect(enqueue_episode);
+            podcast_view.mark_episode_as_played_requested.connect(controller.library.mark_episode_as_played);
+            podcast_view.mark_episode_as_unplayed_requested.connect(controller.library.mark_episode_as_unplayed);
+            podcast_view.delete_local_episode_requested.connect(on_episode_delete_request);
+            podcast_view.mark_all_episodes_as_played_requested.connect(on_mark_as_played_request);
+            podcast_view.download_all_requested.connect(on_download_all_request);
+            podcast_view.delete_podcast_requested.connect(on_remove_request);
+            podcast_view.delete_multiple_episodes.connect(controller.library.delete_local_episodes);
+            podcast_view.mark_multiple_episodes_as_played.connect(controller.library.mark_episodes_as_played);
+            podcast_view.mark_multiple_episodes_as_unplayed.connect(controller.library.mark_episodes_as_unplayed);
+            podcast_view.unplayed_count_changed.connect(on_unplayed_count_changed);
+            //  podcast_view.new_cover_art_set.connect(on_new_cover_art_set);
+            podcast_view.go_back.connect(() => {
+                switch_visible_page(all_podcasts_view);
+            });
 
             // Set up the box that gets displayed when importing from .OPML or .XML files during the first launch
             import_message_box = new Gtk.Box(Gtk.Orientation.VERTICAL, 25);
@@ -345,8 +334,8 @@ namespace Vocal {
             // Add everything into the notebook (except for the iTunes store and search view)
             notebook.add_titled(welcome, "welcome", _("Welcome"));
             notebook.add_titled(import_message_box, "import", _("Importing"));
-            notebook.add_titled(all_scrolled, "all", _("All Podcasts"));
-            notebook.add_titled(details, "details", _("Details"));
+            notebook.add_titled(all_podcasts_view, "all", _("All Podcasts"));
+            notebook.add_titled(podcast_view, "podcast_view", _("Details"));
             notebook.add_titled(video_widget, "video_player", _("Video"));
             
             bool show_complete_button = controller.first_run || controller.library_empty;
@@ -407,7 +396,6 @@ namespace Vocal {
             toolbar.playlist_button.clicked.connect(() => { queue_popover.show_all(); });
 
             toolbar.store_selected.connect (() => {
-                details.pane_should_hide ();
                 switch_visible_page (directory_scrolled);
             });
 
@@ -493,72 +481,55 @@ namespace Vocal {
 
             ThreadFunc<void*> run = () => {
 
-            	if(!controller.currently_repopulating)
-            	{
-
+            	if(!controller.currently_repopulating) {
             		controller.currently_repopulating = true;
     	            bool has_video = false;
 
                     // If it's not the first run or newly launched go ahead and remove all the widgets from the flowboxes
                     if(!controller.first_run && !controller.newly_launched) {
-        	            for(int i = 0; i < all_art.size; i++)
-        	            {
-        	            	all_flowbox.remove(all_flowbox.get_child_at_index(0));
-        	            }
-
-                        all_art.clear();
+                        all_podcasts_view.clear();
                     }
-
 
     	            // If the program was just launched, check to see what the last played media was
     	            if(controller.newly_launched) {
-
-                        current_widget = all_scrolled;
+                        current_widget = all_podcasts_view;
 
     	                if(controller.settings.last_played_media != null && controller.settings.last_played_media.length > 1) {
 
     	                    // Split the media into two different strings
     	                    string[] fields = controller.settings.last_played_media.split(",");
-    	                    bool found = false;
-    	                    foreach(Podcast podcast in controller.library.podcasts) {
+                            string podcast_name = fields[1];
+                            string episode_title = fields[0];
 
-    	                        if(!found) {
-    	                            if(podcast.name == fields[1]) {
-    	                                found = true;
+                            Podcast podcast = controller.library.get_podcast_by_name(podcast_name);
+                            if(podcast != null) {
+                                Episode episode = podcast.find_episode_by_title(episode_title);
+                                if(episode != null) {
+                                    controller.current_episode = episode;
+                                    toolbar.playback_box.set_info_title(controller.current_episode.title.replace("%27", "'"), controller.current_episode.parent.name.replace("%27", "'"));
+                                    controller.track_changed(controller.current_episode.title, controller.current_episode.parent.name, controller.current_episode.parent.coverart_uri, (uint64) controller.player.duration);
 
-    	                                // Attempt to find the matching episode, set it as the current episode, and display the information in the box
-    	                                foreach(Episode episode in podcast.episodes) {
-    	                                    if(episode.title == fields[0]){
-    	                                        controller.current_episode = episode;
-    	                                        toolbar.playback_box.set_info_title(controller.current_episode.title.replace("%27", "'"), controller.current_episode.parent.name.replace("%27", "'"));
-    	                                        controller.track_changed(controller.current_episode.title, controller.current_episode.parent.name, controller.current_episode.parent.coverart_uri, (uint64) controller.player.duration);
+                                    try {
 
-    	                                        try {
+                                        controller.player.set_episode(controller.current_episode);
+                                        controller.player.set_position(controller.current_episode.last_played_position);
+                                        shownotes.set_notes_text(episode.description);
 
-    	                                            controller.player.set_episode(controller.current_episode);
-                                                    controller.player.set_position(controller.current_episode.last_played_position);
-    	                                            shownotes.set_notes_text(episode.description);
+                                    } catch(Error e) {
+                                        warning(e.message);
+                                    }
 
-    	                                        } catch(Error e) {
-    	                                            warning(e.message);
-    	                                        }
-
-    	                                        if(controller.current_episode.last_played_position != 0) {
-    	                                            toolbar.show_playback_box();
-    	                                        }
-    	                                        else {
-    	                                            toolbar.hide_playback_box();
-    	                                        }
-    	                                    }
-    	                                }
-    	                            }
-    	                        }
-    	                    }
+                                    if(controller.current_episode.last_played_position != 0) {
+                                        toolbar.show_playback_box();
+                                    } else {
+                                        toolbar.hide_playback_box();
+                                    }
+                                }
+                            }
     	                }
     	            }
 
-
-    	            // Refill the controller.library based on what is stored in the database (if it's not newly launched, in
+    	            // Refill the library based on what is stored in the database (if it's not newly launched, in
     	            // which case it has already been filled)
     	            if(!controller.newly_launched){
     	                controller.library.refill_library();
@@ -570,66 +541,24 @@ namespace Vocal {
     	            controller.library_empty = false;
 
 	                foreach(Podcast podcast in controller.library.podcasts) {
-
-	                    // Determine whether or not there are video podcasts
-	                    if(podcast.content_type == MediaType.VIDEO) {
-	                        has_video = true;
-	                    }
-                        
-                        CoverArt a = new CoverArt(podcast.coverart_uri.replace("%27", "'"), podcast, true);
-                        
-                        a.get_style_context().add_class("coverart");
-                        a.halign = Gtk.Align.START;
-                        
-                        int currently_unplayed = 0;
-                        foreach(Episode e in podcast.episodes)
-                        {
-                            if (e.status == EpisodeStatus.UNPLAYED)
-                            {
-                                currently_unplayed++;
-                            }
-                        }
-
-                        if(currently_unplayed > 0)
-                        {
-                            a.set_count(currently_unplayed);
-                            a.show_count();
-                        }
-
-                        else
-                        {
-                            a.hide_count();
-                        }
-
-                        all_art.add(a);
-                        
+                        all_podcasts_view.add_podcast(podcast);
 	                }
 
     	            controller.currently_repopulating = false;
             	}
 
-                    Idle.add((owned) callback);
-                    return null;
-                };
-
+                Idle.add((owned) callback);
+                return null;
+            };
 
             Thread.create<void*>(run, false);
 
             yield;
 
-            foreach(CoverArt a in all_art) {
-                all_flowbox.add(a);
-            }
-
-            var flowbox_children = all_flowbox.get_children();
-            foreach(Gtk.Widget f in flowbox_children) {
-                f.halign = Gtk.Align.CENTER;
-                f.valign = Gtk.Align.START;
-            }
-
             // If the app is supposed to open hidden, don't present the window. Instead, hide it
-            if(!controller.open_hidden && !controller.is_closing)
+            if(!controller.open_hidden && !controller.is_closing) {
                 show_all();
+            }
         }
 
 
@@ -658,8 +587,8 @@ namespace Vocal {
         private void play_different_track () {
 
             // Get the episode
-            int index = details.current_episode_index;
-            controller.current_episode = details.podcast.episodes[index];
+            int index = podcast_view.current_episode_index;
+            controller.current_episode = podcast_view.podcast.episodes[index];
 
             controller.player.pause();
             controller.play();
@@ -670,55 +599,17 @@ namespace Vocal {
             controller.settings.last_played_media = "%s,%s".printf(controller.current_episode.title, controller.current_episode.parent.name);
         }
 
-        /*
-         * Library functions
-         */
-         
-        public async void mark_all_as_played_async(Podcast highlighted_podcast) {
-
-            SourceFunc callback = mark_all_as_played_async.callback;
-
-            ThreadFunc<void*> run = () => {
-
-                controller.library.mark_all_episodes_as_played(highlighted_podcast);
-                controller.library.recount_unplayed();
-                controller.library.set_new_badge();
-                foreach(CoverArt a in all_art)
-                {
-                    if(a.podcast == highlighted_podcast)
-                    {
-                        a.set_count(0);
-                        a.hide_count();
-                    }
-                }
-
-                details.mark_all_played();
-
-
-                Idle.add((owned) callback);
-                return null;
-            };
-            Thread.create<void*>(run, false);
-
-            yield;
-        }
-
 
         /*
          * Handles request to download an episode, by showing the downloads menuitem and
          * requesting the download from the controller.library
          */
         public void download_episode(Episode episode) {
-
-            // Show the download menuitem
             toolbar.show_download_button();
-
-
+            
             // Begin the process of downloading the episode (asynchronously)
             var details_box = controller.library.download_episode(episode);
             details_box.cancel_requested.connect(on_download_canceled);
-
-            // Every time a new percentage is available re-calculate the overall percentage
             details_box.new_percentage_available.connect(() => {
                 double overall_percentage = 1.0;
 
@@ -729,8 +620,6 @@ namespace Vocal {
                 }
             });
 
-
-            // Add the download to the downloads popup
             downloads.add_download(details_box);
         }
 
@@ -853,7 +742,7 @@ namespace Vocal {
                             populate_views();
 
                             if(current_widget == import_message_box) {
-                                switch_visible_page(all_scrolled);
+                                switch_visible_page(all_podcasts_view);
                             }
 
                             controller.library_empty = false;
@@ -918,8 +807,8 @@ namespace Vocal {
          * the podcast and episode information
          */
         public void show_details (Podcast current_podcast) {
-            details.set_podcast(current_podcast);
-            switch_visible_page(details);
+            podcast_view.set_podcast(current_podcast);
+            switch_visible_page(podcast_view);
         }
 
 
@@ -939,13 +828,13 @@ namespace Vocal {
             if(current_widget != widget)
                 previous_widget = current_widget;
 
-            if (widget == all_scrolled) {
-                notebook.set_visible_child(all_scrolled);
-                current_widget = all_scrolled;
+            if (widget == all_podcasts_view) {
+                notebook.set_visible_child(all_podcasts_view);
+                current_widget = all_podcasts_view;
             }
-            else if (widget == details) {
-                notebook.set_visible_child(details);
-                current_widget = details;
+            else if (widget == podcast_view) {
+                notebook.set_visible_child(podcast_view);
+                current_widget = podcast_view;
             }
             else if (widget == video_widget) {
                 notebook.set_visible_child(video_widget);
@@ -1035,23 +924,8 @@ namespace Vocal {
         /*
          * Called whenever a child is activated (selected) in one of the three flowboxes.
          */
-        public void on_child_activated(FlowBoxChild child) {
-            Gtk.FlowBox parent = child.parent as Gtk.FlowBox;
-            CoverArt art = parent.get_child_at_index(child.get_index()).get_child() as CoverArt;
-            parent.unselect_all();
-            this.current_episode_art = art;
-            controller.highlighted_podcast = art.podcast;
-            show_details(art.podcast);
-        }
-
-
-		/*
-		 * Called when multiple episodes are highlighted in the sidepane and the user wishes to delete
-		 */
-        public void on_delete_multiple_episodes(Gee.ArrayList<int> indexes) {
-            foreach(int i in indexes) {
-                on_episode_delete_request(details.podcast.episodes[i]);
-            }
+        public void on_child_activated(Podcast podcast) {
+            show_details(podcast);
         }
 
 
@@ -1070,15 +944,10 @@ namespace Vocal {
          */
          private void on_download_canceled(Episode episode) {
 
-            if(details != null && episode.parent == details.podcast) {
+            if(podcast_view != null && episode.parent == podcast_view.podcast) {
 
                 // Get the index for the episode in the list
-                int index = details.get_box_index_from_episode(episode);
-
-                // Set the box to show the downloads button
-                if(index != -1) {
-                    details.boxes[index].show_download_button();
-                }
+                //  int index = podcast_view.get_box_index_from_episode(episode);
             }
         }
 
@@ -1088,21 +957,21 @@ namespace Vocal {
          */
         public void on_download_finished(Episode episode) {
 
-            if (details != null && episode.parent == details.podcast) {
-                details.shownotes.hide_download_button();
+            if (podcast_view != null && episode.parent == podcast_view.podcast) {
+                //  podcast_view.shownotes.hide_download_button();
             }
         }
 
-
-        /*
-		 * Called when an episode needs to be deleted (locally)
-		 */
-        private void on_episode_delete_request(Episode episode) {
-            controller.library.delete_local_episode(episode);
-            details.on_single_delete(episode);
+        public void on_delete_multiple_episodes(Gee.ArrayList<Episode> episodes) {
+            foreach(Episode episode in episodes) {
+                on_episode_delete_request(episode);
+            }
         }
 
-
+        private void on_episode_delete_request(Episode episode) {
+            controller.library.delete_local_episode(episode);
+            //  podcast_view.on_single_delete(episode);
+        }
 
 		/*
 		 * Called when the app needs to go fullscreen or unfullscreen
@@ -1132,11 +1001,11 @@ namespace Vocal {
 
 
         /*
-         * Called when the user requests to mark a podcast as played from the controller.library via the right-click menu
+         * Called when the user requests to mark a podcast as played from the library via the right-click menu
          */
         public void on_mark_as_played_request() {
 
-            if(controller.highlighted_podcast != null) {
+            if(all_podcasts_view.selected_podcast != null) {
                 Gtk.MessageDialog msg = new Gtk.MessageDialog (this, Gtk.DialogFlags.MODAL, Gtk.MessageType.WARNING, Gtk.ButtonsType.YES_NO,
                      _("Are you sure you want to mark all episodes from '%s' as played?".printf(GLib.Markup.escape_text(controller.highlighted_podcast.name.replace("%","%%")))));
 
@@ -1147,7 +1016,7 @@ namespace Vocal {
 			    msg.response.connect ((response_id) => {
 			        switch (response_id) {
 				        case Gtk.ResponseType.YES:
-                            mark_all_as_played_async(controller.highlighted_podcast);
+                            controller.library.mark_all_as_played_async(all_podcasts_view.selected_podcast);
 					        break;
 				        case Gtk.ResponseType.NO:
 					        break;
@@ -1158,108 +1027,6 @@ namespace Vocal {
 		        msg.show ();
 	        }
         }
-
-        
-
-
-        /*
-		 * Called when an episode needs to be marked as played
-		 */
-        public void on_mark_episode_as_played_request(Episode episode) {
-
-            // First check to see the episode is already marked as unplayed
-            if(episode.status != EpisodeStatus.PLAYED) {
-                controller.library.mark_episode_as_played(episode);
-                controller.library.new_episode_count--;
-                controller.library.set_new_badge();
-                foreach(CoverArt a in all_art)
-                {
-                    if(a.podcast == details.podcast)
-                    {
-                        a.set_count(details.unplayed_count);
-                        if(details.unplayed_count > 0)
-                            a.show_count();
-                        else
-                            a.hide_count();
-                    }
-                }
-            }
-        }
-
-
-		/*
-		 * Called when an episode needs to be marked as unplayed
-		 */
-        public void on_mark_episode_as_unplayed_request(Episode episode) {
-
-            // First check to see the episode is already marked as unplayed
-            if(episode.status != EpisodeStatus.UNPLAYED) {
-                controller.library.mark_episode_as_unplayed(episode);
-                controller.library.new_episode_count++;
-                controller.library.set_new_badge();
-
-                foreach(CoverArt a in all_art)
-                {
-                    if(a.podcast == details.podcast)
-                    {
-                        a.set_count(details.unplayed_count);
-                        if(details.unplayed_count > 0)
-                            a.show_count();
-                        else
-                            a.hide_count();
-                    }
-                }
-                if(controller.highlighted_podcast.content_type == MediaType.AUDIO) {
-                    foreach(CoverArt audio in all_art)
-                    {
-                        if(audio.podcast == details.podcast)
-                        {
-                            audio.set_count(details.unplayed_count);
-                            if(details.unplayed_count > 0)
-                                audio.show_count();
-                            else
-                                audio.hide_count();
-                        }
-                    }
-                }
-                else {
-                    foreach(CoverArt video in all_art)
-                    {
-                        if(video.podcast == details.podcast)
-                        {
-                            video.set_count(details.unplayed_count);
-                            if(details.unplayed_count > 0)
-                                video.show_count();
-                            else
-                                video.hide_count();
-                        }
-                    }
-                }
-            }
-        }
-
-
-		/*
-		 * Called when multiple episodes are highlighted in the sidepane and the user wishes to
-		 * mark them all as played
-		 */
-        public void on_mark_multiple_episodes_as_played(Gee.ArrayList<int> indexes) {
-            foreach(int i in indexes) {
-                on_mark_episode_as_played_request(details.podcast.episodes[i]);
-            }
-        }
-
-
-		/*
-		 * Called when multiple episodes are highlighted in the sidepane and the user wishes to
-		 * mark them all as played
-		 */
-        public void on_mark_multiple_episodes_as_unplayed(Gee.ArrayList<int> indexes) {
-            foreach(int i in indexes) {
-                on_mark_episode_as_unplayed_request(details.podcast.episodes[i]);
-            }
-        }
-
 
 		/*
 		 * Called when the user moves the cursor when a video is playing
@@ -1392,7 +1159,7 @@ namespace Vocal {
 				        case Gtk.ResponseType.YES:
 					        controller.library.remove_podcast(controller.highlighted_podcast);
 					        controller.highlighted_podcast = null;
-                            switch_visible_page(all_scrolled);
+                            switch_visible_page(all_podcasts_view);
                             populate_views();
 					        break;
 				        case Gtk.ResponseType.NO:
@@ -1420,7 +1187,7 @@ namespace Vocal {
                 controller.pause();
 
             if(previous_widget == directory_scrolled || previous_widget == search_results_scrolled)
-                previous_widget = all_scrolled;
+                previous_widget = all_podcasts_view;
             switch_visible_page(previous_widget);
 
 
@@ -1431,45 +1198,22 @@ namespace Vocal {
          /*
           * Called when the user clicks on a podcast in the search popover
           */
-         private void on_search_popover_podcast_selected(Podcast p) {
-            if(p != null) {
-                bool found = false;
-                int i = 0;
-                while(!found && i < all_art.size) {
-                    CoverArt a = all_art[i];
-                    if(a.podcast.name == p.name) {
-                        all_flowbox.unselect_all();
-                        this.current_episode_art = a;
-                        controller.highlighted_podcast = a.podcast;
-                        show_details(a.podcast);
-                        found = true;
-                    }
-                    i++;
-                }
-            }
+         private void on_search_popover_podcast_selected(Podcast podcast_to_select) {
+
+            all_podcasts_view.select_podcast(podcast_to_select);
+            show_details(podcast_to_select);
+            controller.highlighted_podcast = podcast_to_select;
+
+            //  this.current_episode_art = a;
          }
 
 
          /*
           * Called when the user clickson an episode in the search popover
           */
-         private void on_search_popover_episode_selected(Podcast p, Episode e) {
-            if(p != null && e != null) {
-                bool podcast_found = false;
-                int i = 0;
-                while(!podcast_found && i < all_art.size) {
-                    CoverArt a = all_art[i];
-                    if(a.podcast.name == p.name) {
-                        all_flowbox.unselect_all();
-                        this.current_episode_art = a;
-                        controller.highlighted_podcast = a.podcast;
-                        show_details(a.podcast);
-                        podcast_found = true;
-                        details.select_episode(e);
-                    }
-                    i++;
-                }
-            }
+         private void on_search_popover_episode_selected(Podcast podcast, Episode episode) {
+            on_search_popover_podcast_selected(podcast);
+            podcast_view.select_episode(episode);
          }
 
 
@@ -1488,13 +1232,13 @@ namespace Vocal {
          */
         public void on_show_name_label_toggled() {
             if(controller.settings.show_name_label) {
-                foreach(CoverArt a in all_art) {
-                    a.show_name_label();
-                }
+                //  foreach(CoverArt a in all_art) {
+                //      a.show_name_label();
+                //  }
             } else {
-                foreach(CoverArt a in all_art) {
-                    a.hide_name_label();
-                }
+                //  foreach(CoverArt a in all_art) {
+                //      a.hide_name_label();
+                //  }
             }
         }
 
@@ -1541,43 +1285,37 @@ namespace Vocal {
 		 * Called when the unplayed count changes and the banner count in the iconviews needs updated
 		 */
         public void on_unplayed_count_changed(int n) {
-            foreach(CoverArt a in all_art)
-                {
-                    if(a.podcast == details.podcast)
-                    {
-                        a.set_count(n);
-                        if(n > 0)
-                            a.show_count();
-                        else
-                            a.hide_count();
-                    }
-                }
-                if(controller.highlighted_podcast.content_type == MediaType.AUDIO) {
-                    foreach(CoverArt audio in all_art)
-                    {
-                        if(audio.podcast == details.podcast)
-                        {
-                            audio.set_count(n);
-                            if(n > 0)
-                                audio.show_count();
-                            else
-                                audio.hide_count();
-                        }
-                    }
-                }
-                else {
-                    foreach(CoverArt video in all_art)
-                    {
-                        if(video.podcast == details.podcast)
-                        {
-                            video.set_count(n);
-                            if(n > 0)
-                                video.show_count();
-                            else
-                                video.hide_count();
-                        }
-                    }
-                }
+            //  foreach(CoverArt a in all_art) {
+            //      if(a.podcast == podcast_view.podcast) {
+            //          a.set_count(n);
+            //          if(n > 0)
+            //              a.show_count();
+            //          else
+            //              a.hide_count();
+            //      }
+            //  }
+            //  if(controller.highlighted_podcast.content_type == MediaType.AUDIO) {
+            //      foreach(CoverArt audio in all_art) {
+            //          if(audio.podcast == podcast_view.podcast) {
+            //              audio.set_count(n);
+            //              if(n > 0)
+            //                  audio.show_count();
+            //              else
+            //                  audio.hide_count();
+            //          }
+            //      }
+            //  } else {
+            //      foreach(CoverArt video in all_art) {
+            //          if(video.podcast == podcast_view.podcast)
+            //          {
+            //              video.set_count(n);
+            //              if(n > 0)
+            //                  video.show_count();
+            //              else
+            //                  video.hide_count();
+            //          }
+            //      }
+            //      }
         }
         
         /*
@@ -1586,25 +1324,25 @@ namespace Vocal {
         public void on_new_cover_art_set(string path) {
             
             // Find the cover art in the controller.library and set the new image
-            foreach(CoverArt a in all_art) {
-                if(a.podcast == details.podcast) {
-                    GLib.File cover = GLib.File.new_for_path(path);
-                    InputStream input_stream = cover.read();
-                    var pixbuf = a.create_cover_image(input_stream);
+            //  foreach(CoverArt a in all_art) {
+            //      if(a.podcast == podcast_view.podcast) {
+            //          GLib.File cover = GLib.File.new_for_path(path);
+            //          InputStream input_stream = cover.read();
+            //          var pixbuf = a.create_cover_image(input_stream);
                     
-                    a.image.pixbuf = pixbuf;
+            //          a.image.pixbuf = pixbuf;
                     
-                    // Now copy the image to controller.library cache and set it in the db
-                    controller.library.set_new_local_album_art(path, a.podcast);
-                }
-            }
+            //          // Now copy the image to controller.library cache and set it in the db
+            //          controller.library.set_new_local_album_art(path, a.podcast);
+            //      }
+            //  }
         }        
 
         /*
          * Requests the app to be taken fullscreen if the video widget
          * is double-clicked
          */
-        private bool on_video_button_press_event(EventButton e) {
+        private bool on_video_button_press_event(Gdk.EventButton e) {
             mouse_primary_down = true;
             if(e.type == Gdk.EventType.2BUTTON_PRESS) {
                 on_fullscreen_request();
@@ -1613,7 +1351,7 @@ namespace Vocal {
             return false;
         }
 
-        private bool on_video_button_release_event(EventButton e) {
+        private bool on_video_button_release_event(Gdk.EventButton e) {
             mouse_primary_down = false;
             return false;
         }
@@ -1628,7 +1366,7 @@ namespace Vocal {
                 switch_visible_page(directory_scrolled);
 
                 // Set the controller.library as the previous widget for return_to_library to work
-                previous_widget = all_scrolled;
+                previous_widget = all_podcasts_view;
             }
 
             // Add a new feed

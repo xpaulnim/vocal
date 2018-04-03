@@ -17,23 +17,24 @@
   END LICENSE
 ***/
 
-using Gtk;
-using Gee;
-using Granite;
-	namespace Vocal {
 
-	    public class Shownotes : Gtk.ScrolledWindow {
+namespace Vocal {
 
-    	public signal void copy_shareable_link();
-    	public signal void send_tweet();
-    	public signal void copy_direct_link();
+	public class Shownotes : Gtk.ScrolledWindow {
+
+		public signal void on_download_episode(Episode episode);
+		public signal void marked_as_played(Episode episode);
+		public signal void marked_as_unplayed(Episode episode);
+		public signal void copy_shareable_link();
+		public signal void send_tweet();
+		public signal void copy_direct_link();
 
 		public Gtk.Button play_button;
 		public Gtk.Button queue_button;
 		public Gtk.Button download_button;
 		public Gtk.Button share_button;
-		public Gtk.Button mark_as_played_button;
-		public Gtk.Button mark_as_new_button;
+		private Gtk.Button mark_as_played_button;
+		private Gtk.Button mark_as_new_button;
 		public Gtk.Button delete_button;
 		public Episode episode = null;
 
@@ -47,7 +48,6 @@ using Granite;
 		private Gtk.Label shownotes_label;
 
 		public Shownotes () {
-
 			var content_box = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
 
 			shownotes_label = new Gtk.Label ("");
@@ -66,40 +66,49 @@ using Granite;
 			mark_as_played_button.has_tooltip = true;
 			mark_as_played_button.relief = Gtk.ReliefStyle.NONE;
 			mark_as_played_button.tooltip_text = _("Mark this episode as played");
+			mark_as_played_button.clicked.connect(() => {
+				marked_as_played(this.episode);
+			});
 
 			mark_as_new_button = new Gtk.Button.from_icon_name("starred-symbolic", Gtk.IconSize.SMALL_TOOLBAR);
 			mark_as_new_button.has_tooltip = true;
 			mark_as_new_button.relief = Gtk.ReliefStyle.NONE;
 			mark_as_new_button.tooltip_text = _("Mark this episode as new");
+			mark_as_new_button.clicked.connect(() => {
+				marked_as_unplayed(this.episode);
+			});
 
 			download_button = new Gtk.Button.from_icon_name(Utils.check_elementary() ? "browser-download-symbolic" : "document-save-symbolic", Gtk.IconSize.SMALL_TOOLBAR);
 			download_button.has_tooltip = true;
 			download_button.relief = Gtk.ReliefStyle.NONE;
 			download_button.tooltip_text = _("Download episode");
+			download_button.clicked.connect(() => {
+				on_download_episode(this.episode);
+			});
 
 			share_button = new Gtk.Button.from_icon_name(Utils.check_elementary() ? "send-to-symbolic" : "emblem-shared-symbolic", Gtk.IconSize.SMALL_TOOLBAR);
 			share_button.has_tooltip = true;
 			share_button.relief = Gtk.ReliefStyle.NONE;
 			share_button.tooltip_text = _("Share this episode");
 			share_button.button_press_event.connect((e) => {
-                var share_menu = new Gtk.Menu();
-                shareable_link = new Gtk.MenuItem.with_label(_("Copy shareable link"));
-                tweet = new Gtk.MenuItem.with_label(_("Send a Tweet…"));
-                link_to_file = new Gtk.MenuItem.with_label(_("Copy the direct episode link"));
+				var share_menu = new Gtk.Menu();
+				shareable_link = new Gtk.MenuItem.with_label(_("Copy shareable link"));
+				tweet = new Gtk.MenuItem.with_label(_("Send a Tweet…"));
+				link_to_file = new Gtk.MenuItem.with_label(_("Copy the direct episode link"));
 
-                shareable_link.activate.connect(() => { copy_shareable_link(); });
-           		tweet.activate.connect(() => { send_tweet(); });
-            	link_to_file.activate.connect(() => { copy_direct_link(); });
+				shareable_link.activate.connect(() => { copy_shareable_link(); });
+				tweet.activate.connect(() => { send_tweet(); });
+				link_to_file.activate.connect(() => { copy_direct_link(); });
 
-                share_menu.add(shareable_link);
-                share_menu.add(tweet);
-                share_menu.add(new Gtk.SeparatorMenuItem());
-                share_menu.add(link_to_file);
-                share_menu.attach_to_widget(share_button, null);
-                share_menu.show_all();
-                share_menu.popup(null, null, null, e.button, e.time);
-                return true;
-            });
+				share_menu.add(shareable_link);
+				share_menu.add(tweet);
+				share_menu.add(new Gtk.SeparatorMenuItem());
+				share_menu.add(link_to_file);
+				share_menu.attach_to_widget(share_button, null);
+				share_menu.show_all();
+				share_menu.popup(null, null, null, e.button, e.time);
+				return true;
+			});
 
 			controls_box.pack_start(mark_as_played_button, false, false, 0);
 			controls_box.pack_start(mark_as_new_button, false, false, 0);
@@ -149,44 +158,73 @@ using Granite;
 			this.add (content_box);
 		}
 
-		public void set_html(string html) {
-			this.shownotes_label.label = html;
+		public void set_episode(Episode episode) {
+			this.episode = episode;
+			set_title(episode.title);
+			set_html(episode.description != "(null)" ? Utils.html_to_markup(episode.description) : _("No show notes available."));
+			set_date(episode.datetime_released);
+
+			// Check to see if the episode has been downloaded or not
+			if(episode.current_download_status == DownloadStatus.DOWNLOADED) {
+				hide_download_button();
+			} else {
+				show_download_button();
+			}
+
+			update_played_status();
+			episode.played_status_updated.connect(() => {
+				update_played_status();
+			});
+
+			show_all();
+		}
+
+		private void set_html(string html) {
+			shownotes_label.label = html;
 			shownotes_label.use_markup = true;
 			show_all();
 		}
 
-		public void show_download_button() {
-			this.download_button.set_no_show_all(false);
+		private void show_download_button() {
+			download_button.set_no_show_all(false);
 			download_button.show();
 		}
 
-		public void hide_download_button() {
-			this.download_button.set_no_show_all(true);
+		private void hide_download_button() {
+			download_button.set_no_show_all(true);
 			download_button.hide();
 		}
 
-		public void set_title(string title) {
+		private void set_title(string title) {
 			title_label.set_text(title.replace("%27", "'"));
 		}
 
-		public void set_date(GLib.DateTime date) {
+		private void set_date(GLib.DateTime date) {
 			date_label.set_text(date.format("%x"));
 		}
 
-	    public void show_mark_as_new_button () {
-	        mark_as_played_button.no_show_all = true;
-	        mark_as_played_button.hide ();
+		private void update_played_status() {
+			if(episode.status == EpisodeStatus.PLAYED) {
+				show_mark_as_played_button();
+			} else {
+				show_mark_as_new_button();
+			}
+		}
 
-	        mark_as_new_button.no_show_all = false;
-	        mark_as_new_button.show ();
-	    }
+		private void show_mark_as_new_button () {
+			mark_as_played_button.no_show_all = true;
+			mark_as_played_button.hide ();
 
-	    public void show_mark_as_played_button () {
-	        mark_as_played_button.no_show_all = false;
-	        mark_as_played_button.show ();
+			mark_as_new_button.no_show_all = false;
+			mark_as_new_button.show ();
+		}
 
-	        mark_as_new_button.no_show_all = true;
-	        mark_as_new_button.hide ();
-	    }
+		private void show_mark_as_played_button () {
+			mark_as_played_button.no_show_all = false;
+			mark_as_played_button.show ();
+
+			mark_as_new_button.no_show_all = true;
+			mark_as_new_button.hide ();
+		}
 	}
 }

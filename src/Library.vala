@@ -39,7 +39,6 @@ namespace Vocal {
         // Fired when there is an update during import
         public signal void 	import_status_changed(int current, int total, string name);
 
-        // Fired when there is a new, new episode count
         private signal void new_episode_count_changed();
 
         // Fired when the queue changes
@@ -63,16 +62,6 @@ namespace Vocal {
 
         Episode downloaded_episode = null;
 
-        private int _new_episode_count;
-        public int new_episode_count {
-            get { return _new_episode_count; }
-
-            set {
-                _new_episode_count = value;
-                new_episode_count_changed();
-            }
-        }
-
         private int batch_download_count = 0;
         private bool batch_notification_needed = false;
 
@@ -80,9 +69,6 @@ namespace Vocal {
 
         private Controller controller;
 
-        /*
-         * Constructor for the library
-         */
         public Library(Controller controller) {
 
             this.controller = controller;
@@ -102,13 +88,22 @@ namespace Vocal {
 
 #if HAVE_LIBUNITY
             launcher = Unity.LauncherEntry.get_for_desktop_id("vocal.desktop");
-            launcher.count = new_episode_count;
+            launcher.count = 0;
 #endif
 
             new_episode_count_changed.connect(set_new_badge);
-            new_episode_count = 0;
         }
 
+        public Podcast? get_podcast_by_name(string name) {
+            foreach (var podcast in podcasts) {
+                if(podcast.name == name) {
+                    return podcast;
+                }
+            }
+
+            info("No podcast found matching %s\n", name);
+            return null;
+        }
 
 
         /*
@@ -158,13 +153,8 @@ namespace Vocal {
          * Adds a new podcast to the library
          */
         public bool add_podcast(Podcast podcast) throws VocalLibraryError {
-
-            if(podcast == null){
-                throw new VocalLibraryError.ADD_ERROR(_("Unable to add podcast"));
-            }
-
             // Set all but the most recent episode as played on initial add to library
-            if(podcast.episodes.size > 0) {
+            if(podcast.episode_count() > 0) {
                 for(int i = 0; i < podcast.episodes.size-1; i++) {
                     podcast.episodes[i].status = EpisodeStatus.PLAYED;
                 }
@@ -210,22 +200,7 @@ namespace Vocal {
 		        return false;
 	        }
 
-	        string content_type_text;
-	        string played_text;
-
-	        if(podcast.content_type == MediaType.AUDIO) {
-	            content_type_text = "audio";
-	        }
-	        else if(podcast.content_type == MediaType.VIDEO) {
-	            content_type_text = "video";
-	        }
-	        else {
-	            content_type_text = "unknown";
-	        }
-
-
-            // Add the podcast
-
+	        string content_type_text = podcast.content_type.to_string();
             string name, feed_uri, album_art_url, album_art_local_uri, description;
 
             name = podcast.name.replace("'", "%27");
@@ -261,12 +236,7 @@ namespace Vocal {
                 uri = episode.uri.replace("'", "%27");
                 episode_description = episode.description.replace("'", "%27");
 
-                if(episode.status == EpisodeStatus.PLAYED) {
-	                played_text = "played";
-	            }
-	            else {
-	                played_text = "unplayed";
-	            }
+                string played_text = episode.status.to_string();
 
     	        string download_text;
 	            if(episode.current_download_status == DownloadStatus.DOWNLOADED) {
@@ -296,7 +266,7 @@ namespace Vocal {
         public bool add_podcast_from_file(string path) {
 
             string uri = path;
-            
+
             // Discover the real URI (avoid redirects)
             if(path.contains("http")) {
                 uri = Utils.get_real_uri(path);
@@ -315,9 +285,6 @@ namespace Vocal {
         }
 
 
-        /*
-         * Adds a new podcast from a file, asynchronously
-         */
         public async bool async_add_podcast_from_file(string path) {
 
             bool successful = true;
@@ -358,8 +325,6 @@ namespace Vocal {
          * Checks library for downloaded episodes that are played and over a week old
          */
         public async void autoclean_library() {
-
-
             SourceFunc callback = autoclean_library.callback;
 
             ThreadFunc<void*> run = () => {
@@ -377,8 +342,6 @@ namespace Vocal {
                             // Delete the episode. Skip checking for an existing file, the delete_episode method will do that automatically
                             info("Episode %s is more than a week old. Deleting.".printf(e.title));
                             delete_local_episode(e);
-
-
                         }
                     }
                 }
@@ -400,44 +363,30 @@ namespace Vocal {
 	        return file.query_exists ();
         }
 
-        /*
-         * Checks each feed in the library to see if new episodes are available
-         */
         public async Gee.ArrayList<Episode> check_for_updates() throws Error{
 
             SourceFunc callback = check_for_updates.callback;
-            Gee.ArrayList<Episode> new_episodes = new Gee.ArrayList<Episode>();
-
             parser = new FeedParser();
+            var new_episodes = new Gee.ArrayList<Episode>();
 
             ThreadFunc<void*> run = () => {
                 foreach(Podcast podcast in podcasts) {
                     try {
-                    
-                        int added = -1;
+
+                        // FIXME: A Better way to validate URIs. See SOUP_URI_VALID_FOR_HTTP
                         if (podcast.feed_uri != null && podcast.feed_uri.length > 4) {
-                            added = parser.update_feed(podcast);
+                            new_episodes = parser.update_feed(podcast);
                         }
 
-                        while(added > 0) {
-                            int index = podcast.episodes.size - added;
-
-                            // Add the new episode to the arraylist in case it needs to be downloaded later
-
-                            new_episodes.add(podcast.episodes[index]);
-
-                            write_episode_to_database(podcast.episodes[index]);
-                            added--;
-                        }
-                        
-                        if (added == -1) {
-                            critical ("Unable to update podcast due to missing feed URL: " + podcast.name);
+                        foreach (var episode in new_episodes) {
+                            write_episode_to_database(episode);
+                            podcast.add_episode(episode);
                         }
 
                     } catch(Error e) {
                         throw e;
                     }
-                    
+
                 }
 
                 Idle.add((owned) callback);
@@ -450,33 +399,29 @@ namespace Vocal {
             return new_episodes;
         }
 
-        /*
-         * Deletes the local media file for an episode
-         */
-        public void delete_local_episode(Episode e) {
+        public void delete_local_episodes(Gee.ArrayList<Episode> episodes) {
+            foreach(Episode episode in episodes) {
+                delete_local_episode(episode);
+            }
+        }
 
-            // First check that the file exists
-            GLib.File local = GLib.File.new_for_path(e.local_uri);
+        public void delete_local_episode(Episode episode) {
+            GLib.File local = GLib.File.new_for_path(episode.local_uri);
             if(local.query_exists()) {
-
-                // Delete the file
                 local.delete();
             }
 
-            string query, errmsg;
-            int ec;
-            string title;
-
             // Clear the fields in the episode
-            title = e.title.replace("'", "%27");
-            e.current_download_status = DownloadStatus.NOT_DOWNLOADED;
-            e.local_uri = null;
+            string title = episode.title.replace("'", "%27");
+            episode.current_download_status = DownloadStatus.NOT_DOWNLOADED;
+            episode.local_uri = null;
 
             // Write the episode to database
-            query = """UPDATE Episode SET download_status = 'not_downloaded', local_uri = NULL WHERE title = '%s'""".printf(title);
+            string query = """UPDATE Episode SET download_status = 'not_downloaded', local_uri = NULL WHERE title = '%s'""".printf(title);
 
 
-            ec = db.exec (query, null, out errmsg);
+            string errmsg;
+            int ec = db.exec (query, null, out errmsg);
 
             if (ec != Sqlite.OK) {
                 error(errmsg);
@@ -490,24 +435,18 @@ namespace Vocal {
          * for displaying download progress information later
          */
         public DownloadDetailBox? download_episode(Episode episode) {
-
-            // Check to see if the episode has already been downloaded
-            if(episode.current_download_status == DownloadStatus.DOWNLOADED) {
-                warning("Error. Episode %s is already downloaded.\n", episode.title);
-                return null;
-            }
+            //  if(episode.current_download_status == DownloadStatus.DOWNLOADED) {
+            //      warning("Error. Episode %s is already downloaded.\n", episode.title);
+            //      return null;
+            //  }
 
             string library_location;
 
-
-
             if(settings.library_location != null) {
                 library_location = settings.library_location;
-            }
-            else {
+            } else {
                 library_location = GLib.Environment.get_user_data_dir() + """/vocal""";
             }
-
 
             // Create a file object for the remotely hosted file
             GLib.File remote_file = GLib.File.new_for_uri(episode.uri);
@@ -520,33 +459,33 @@ namespace Vocal {
                 GLib.File local_file = GLib.File.new_for_path(path);
 
                 detail_box = new DownloadDetailBox(episode);
+                info("starting download");
                 detail_box.download_has_completed_successfully.connect(on_successful_download);
+                info("after signal");
                 FileProgressCallback callback = detail_box.download_delegate;
                 GLib.Cancellable cancellable = new GLib.Cancellable();
 
                 detail_box.cancel_requested.connect( () => {
-
                     cancellable.cancel();
                     bool exists = local_file.query_exists();
                     if(exists) {
                         try {
                             local_file.delete();
                         } catch(Error e) {
-                            stderr.puts("Unable to delete file.\n");
+                            info("Unable to delete file.\n");
                         }
                     }
 
                 });
 
-                remote_file.copy_async(local_file, FileCopyFlags.OVERWRITE, Priority.DEFAULT, cancellable, callback);
 
+                remote_file.copy_async(local_file, FileCopyFlags.OVERWRITE, Priority.DEFAULT, cancellable, callback);
 
                 // Set the episode's local uri to the new path
                 episode.local_uri = path;
                 mark_episode_as_downloaded(episode);
-
-
             } catch (Error e) {
+                error("Error downloading podcast %s", e.message);
             }
 
             if(batch_download_count > 0) {
@@ -554,6 +493,7 @@ namespace Vocal {
             }
             batch_download_count++;
 
+            info("returning download box");
             return detail_box;
         }
 
@@ -702,11 +642,32 @@ namespace Vocal {
 	        }
         }
 
-        /*
-         * Marks all episodes in a given podcast as played
-         */
+        public async void mark_all_as_played_async(Podcast highlighted_podcast) {
+
+            SourceFunc callback = mark_all_as_played_async.callback;
+
+            ThreadFunc<void*> run = () => {
+                mark_all_episodes_as_played(highlighted_podcast);
+
+                Idle.add((owned) callback);
+                return null;
+            };
+            Thread.create<void*>(run, false);
+
+            yield;
+        }
+
         public void mark_all_episodes_as_played(Podcast highlighted_podcast) {
             foreach(Episode episode in highlighted_podcast.episodes) {
+                mark_episode_as_played(episode);
+            }
+
+            recount_unplayed();
+            set_new_badge();
+        }
+
+        public void mark_episodes_as_played(Gee.ArrayList<Episode> episodes) {
+            foreach (var episode in episodes) {
                 mark_episode_as_played(episode);
             }
         }
@@ -756,18 +717,19 @@ namespace Vocal {
             }
         }
 
-        /*
-         * Marks an episode as played in the database
-         */
-        public void mark_episode_as_unplayed(Episode episode) {
+        public void mark_episodes_as_unplayed(Gee.ArrayList<Episode> episodes) {
+            foreach (var episode in episodes) {
+                mark_episode_as_unplayed(episode);
+            }
+        }
 
+        public void mark_episode_as_unplayed(Episode episode) {
             episode.status = EpisodeStatus.UNPLAYED;
 
             string query, errmsg;
             int ec;
             string title;
             title = episode.title.replace("'", "%27");
-
 
             query = """UPDATE Episode SET play_status = 'unplayed' WHERE title = '%s'""".printf(title);
 
@@ -776,11 +738,10 @@ namespace Vocal {
             if (ec != Sqlite.OK) {
                 error(errmsg);
             }
+
+            set_new_badge();
         }
 
-        /*
-         * Notifies the user that a download has completed successfully
-         */
         public void on_successful_download(string episode_title, string parent_podcast_name) {
 
             batch_download_count--;
@@ -830,7 +791,8 @@ namespace Vocal {
                     mark_episode_as_downloaded(downloaded_episode);
                 }
 
-            } catch(Error error) {
+            } catch(Error e) {
+                error(e.message);
             } finally {
                 download_finished(downloaded_episode);
             }
@@ -853,18 +815,10 @@ namespace Vocal {
             return 0;
         }
 
-
-        /*
-         * Iterates through each episode in the library to count the number of unplayed episodes
-         */
         public void recount_unplayed() {
-            new_episode_count = 0;
-            foreach(Podcast p in podcasts) {
-                foreach(Episode e in p.episodes) {
-                    if(e.status == EpisodeStatus.UNPLAYED) {
-                        new_episode_count++;
-                    }
-                }
+            int new_episode_count = 0;
+            foreach(Podcast podcast in podcasts) {
+                new_episode_count += podcast.unplayed_count;
             }
 
             set_new_badge();
@@ -913,21 +867,11 @@ namespace Vocal {
                         current.description = val;
                     }
                     else if (col_name == "content_type") {
-                        if(val == "audio") {
-                            current.content_type = MediaType.AUDIO;
-                        }
-                        else if(val == "video") {
-                            current.content_type = MediaType.VIDEO;
-                        }
-                        else {
-                            current.content_type = MediaType.UNKNOWN;
-                        }
+                        current.content_type = MediaType.from_string(val);
                     }
 		        }
 
-		        //Add the new podcast
 		        podcasts.add(current);
-
 	        }
 
 	        stmt.reset();
@@ -936,6 +880,7 @@ namespace Vocal {
 	        // Repeat the process with the episodes
 
 	        foreach(Podcast p in podcasts) {
+                var all_episodes = new Gee.ArrayList<Episode>();
 
 	            prepared_query_str = "SELECT * FROM Episode WHERE parent_podcast_name = '%s' ORDER BY rowid ASC".printf(p.name);
 	            ec = db.prepare_v2 (prepared_query_str, prepared_query_str.length, out stmt);
@@ -943,7 +888,6 @@ namespace Vocal {
 		            stderr.printf ("Error: %d: %s\n", db.errcode (), db.errmsg ());
 		            return;
 	            }
-
 
 	            cols = stmt.column_count ();
 	            while (stmt.step () == Sqlite.ROW) {
@@ -995,8 +939,10 @@ namespace Vocal {
                         }
 		            }
 
-		            p.episodes.add(current_ep);
+                    all_episodes.add(current_ep);
 	            }
+
+                p.add_episodes(all_episodes);
 
 	            stmt.reset();
             }
@@ -1047,15 +993,7 @@ namespace Vocal {
                         current.description = val;
                     }
                     else if (col_name == "content_type") {
-                        if(val == "audio") {
-                            current.content_type = MediaType.AUDIO;
-                        }
-                        else if(val == "video") {
-                            current.content_type = MediaType.VIDEO;
-                        }
-                        else {
-                            current.content_type = MediaType.UNKNOWN;
-                        }
+                        current.content_type = MediaType.from_string(val);
                     }
                 }
 
@@ -1224,15 +1162,7 @@ namespace Vocal {
                         current.description = val;
                     }
                     else if (col_name == "content_type") {
-                        if(val == "audio") {
-                            current.content_type = MediaType.AUDIO;
-                        }
-                        else if(val == "video") {
-                            current.content_type = MediaType.VIDEO;
-                        }
-                        else {
-                            current.content_type = MediaType.UNKNOWN;
-                        }
+                        current.content_type = MediaType.from_string(val);
                     }
                 }
 
@@ -1287,19 +1217,17 @@ namespace Vocal {
          */
         public void set_new_badge() {
 #if HAVE_LIBUNITY
-            launcher.count = new_episode_count;
-            if(new_episode_count > 0) {
-                launcher.count_visible = true;
-            }
-            else {
-                launcher.count_visible = false;
-            }
+            //  launcher.count = new_episode_count;
+            //  if(new_episode_count > 0) {
+            //      launcher.count_visible = true;
+            //  } else {
+            //      launcher.count_visible = false;
+            //  }
 #endif
-
         }
-        
+
         public void set_new_local_album_art(string path_to_local_file, Podcast p) {
-            
+
             // Copy the file
             GLib.File current_file = GLib.File.new_for_path(path_to_local_file);
 
@@ -1309,7 +1237,7 @@ namespace Vocal {
             GLib.File local_file = GLib.File.new_for_path(path);
 
             current_file.copy_async(local_file, FileCopyFlags.OVERWRITE, Priority.DEFAULT, null, null);
-            
+
             // Set the new file location in the database
             string query, errmsg;
             int ec;
@@ -1321,10 +1249,10 @@ namespace Vocal {
             if (ec != Sqlite.OK) {
                 stderr.printf ("Error: %s\n", errmsg);
             }
-            
+
             // Set the new file location for the podcast object
             p.local_art_uri = local_file.get_uri();
-            
+
         }
 
         /*

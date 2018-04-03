@@ -20,16 +20,21 @@
 using Gee;
 
 namespace Vocal {
-    public class Podcast {
+    public class Podcast : Object {
     
-        public  ArrayList<Episode> episodes = null;  // the episodes belonging to this podcast
-        
-        public string       name = "";               // podcast name
-        public string       feed_uri = "";           // the uri for the podcast
-        public string       remote_art_uri = "";     // the web link to the album art if local is unavailable
-        public string       local_art_uri = "";      // where the locally cached album art is located
-        public string       description = "";        // the episode's description
-        public MediaType    content_type;            // is the podcast an audio or video feed?
+        public signal void unplayed_episodes_updated();
+
+        public  ArrayList<Episode> episodes = null;
+        public string       name            = "";
+        public string       feed_uri        = "";
+        public string       remote_art_uri  = "";   // the web link to the album art if local is unavailable
+        public string       local_art_uri   = "";   // where the locally cached album art is located
+        public string       description     = "";
+        private int         _unplayed_count = 0;
+        public int          unplayed_count {
+            get { return _unplayed_count; }
+        }
+        public MediaType    content_type;
 
         /*
          * Gets and sets the coverart, whether it's from a remote source
@@ -66,24 +71,61 @@ namespace Vocal {
             }
 		    }
 		}
-		
-   
-        /*
-         * Default constructor for an empty podcast
-         */
+
         public Podcast () {
             episodes = new ArrayList<Episode>();
             content_type = MediaType.UNKNOWN;
-  	    }
-    	    
-            
-        /*
-         * Add a new episode to the library
-         */
-        public void add_episode(Episode new_episode) {
-            episodes.insert(0, new_episode);
         }
-            
+          
+        public void add_episodes(Gee.ArrayList<Episode> episodes) {
+            foreach (var episode in episodes) {
+                this.episodes.add(episode);
+                episode.played_status_updated.connect(() => {
+                    recount_unplayed_episodes();
+                });
+            }
+
+            recount_unplayed_episodes();
+        }
+
+        public void add_episode(Episode new_episode) {
+            episodes.add(new_episode);
+
+            recount_unplayed_episodes();
+            new_episode.played_status_updated.connect(() => {
+                recount_unplayed_episodes();
+            });
+        }
+
+        public int episode_count() {
+            return episodes.size;
+        }
+
+        private void recount_unplayed_episodes() {
+            int unplayed = 0;
+            foreach (var episode in episodes) {
+                if(episode.status == EpisodeStatus.UNPLAYED) {
+                    unplayed++;
+                }
+            }
+
+            if(unplayed != _unplayed_count) {
+                _unplayed_count = unplayed;
+                unplayed_episodes_updated();
+            }
+        }
+
+        // FIXME: Some podcasts have multiple episodes with one name.
+        public Episode? find_episode_by_title(string title) {
+            foreach (var episode in episodes) {
+                if(episode.title == title) {
+                    return episode;
+                }
+            }
+
+            info("No episode found in podcast %s with title %s\n", name, title);
+            return null;
+        }
     }
         
         
@@ -92,6 +134,27 @@ namespace Vocal {
      */
     public enum MediaType {
           AUDIO, VIDEO, UNKNOWN;
+
+          public string to_string () {
+            switch (this) {
+            case MediaType.AUDIO:
+                return "audio";
+            case MediaType.VIDEO:
+                return "video";
+            default:
+                return "unknown";
+            }
+        }
+    
+        public static MediaType from_string (string str) {
+            if (str == "played") {
+                return MediaType.AUDIO;
+            } else if (str == "video") {
+                return MediaType.VIDEO;
+            } else {
+               return MediaType.UNKNOWN;
+            }
+        }
     }
 
 }

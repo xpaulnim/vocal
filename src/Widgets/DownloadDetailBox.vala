@@ -32,8 +32,8 @@ namespace Vocal {
 
         public signal void new_percentage_available();		// Fired when a new download percentage is available
 
-        public Gtk.Label 	 	title_label {private get; private set;}
-        public Gtk.Label	 	podcast_label {private get; private set;}
+        private Gtk.Label 	 	title_label;
+        private Gtk.Label	 	podcast_label;
         public Gtk.ProgressBar  progress_bar;
         public Gtk.Label 		download_label;
 
@@ -100,14 +100,13 @@ namespace Vocal {
             details_box.add(label_box);
 
             var progress_box = new Gtk.Box(Gtk.Orientation.HORIZONTAL, 0);
-
             progress_bar = new Gtk.ProgressBar();
             progress_bar.show_text = false;
             progress_bar.expand = true;
             progress_bar.valign = Gtk.Align.CENTER;
 
             var cancel_button = new Gtk.Button.from_icon_name("process-stop-symbolic", Gtk.IconSize.BUTTON);
-            cancel_button.get_style_context().add_class("flat");
+            //  cancel_button.get_style_context().add_class("flat");
             cancel_button.tooltip_text = _("Cancel Download");
             cancel_button.clicked.connect( () => {
                 cancel_requested(episode);

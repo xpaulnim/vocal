@@ -307,7 +307,7 @@ namespace Vocal {
                 // Populate the IconViews from the library
                 window.populate_views();
                 window.show_all();
-                window.switch_visible_page(window.all_scrolled);
+                window.switch_visible_page(window.all_podcasts_view);
 
             }
         }
@@ -344,12 +344,12 @@ namespace Vocal {
 
                 //If the current episode is unplayed, subtract one from unplayed total and display
                 if(current_episode.status == EpisodeStatus.UNPLAYED) {
-                    window.current_episode_art.set_count(window.details.unplayed_count);
-                    if(window.details.unplayed_count > 0)
-                        window.current_episode_art.show_count();
-                    else
-                        window.current_episode_art.hide_count();
-                    library.new_episode_count--;
+                    current_episode.status = EpisodeStatus.UNPLAYED;
+                    //  window.current_episode_art.set_count(window.details.unplayed_count);
+                    //  if(window.details.unplayed_count > 0)
+                    //      window.current_episode_art.show_count();
+                    //  else
+                    //      window.current_episode_art.hide_count();
                     library.set_new_badge();
                 }
 
@@ -534,7 +534,7 @@ namespace Vocal {
                         window.populate_views();
 
                         if(window.current_widget == window.welcome) {
-                            window.switch_visible_page(window.all_scrolled);
+                            window.switch_visible_page(window.all_podcasts_view);
                         }
 
                         library_empty = false;
@@ -579,21 +579,16 @@ namespace Vocal {
             	window.add_feed.destroy();
             }
         }
-        
-        /*
-         * Check for new episodes
-         */
+
         public void on_update_request() {
-
-            // Only check for updates if no other checks are currently under way
-            if(!checking_for_updates) {
-
+            if(checking_for_updates) {
+                info("Vocal is already checking for updates.");
+            } else {
                 info("Checking for updates.");
 
                 checking_for_updates = true;
 
-                // Create an arraylist to store new episodes
-                Gee.ArrayList<Episode> new_episodes = new Gee.ArrayList<Episode>();
+                var new_episodes = new Gee.ArrayList<Episode>();
 
                 var loop = new MainLoop();
                 library.check_for_updates.begin((obj, res) => {
@@ -612,13 +607,11 @@ namespace Vocal {
                 checking_for_updates = false;
 
                 // Send a notification if there are new episodes
-                if(new_episodes.size > 0 && !settings.auto_download)
-                {
+                if(new_episodes.size > 0 && !settings.auto_download) {
                     if(!window.focus_visible)
                 	   Utils.send_generic_notification(_("Fresh content has been added to your library."));
 
                 	// Also update the number of new episodes and set the badge count
-                	library.new_episode_count += new_episodes.size;
                 	library.set_new_badge();
                 }
 
@@ -629,18 +622,13 @@ namespace Vocal {
                     }
                 }
 
-                int new_episode_count = new_episodes.size;
-
-                // Free up the memory from the arraylist
-                new_episodes = null;
-
                 // Lastly, if there are new episodes, repopulate the views to obtain new counts
-                if(new_episode_count > 0) {
+                if(new_episodes.size > 0) {
                     info ("Repopulating views after the update process has finished.");
                     window.populate_views();
                 }
-            } else {
-                info("Vocal is already checking for updates.");
+
+                new_episodes = null;
             }
         }
     }

@@ -43,29 +43,21 @@ namespace Vocal {
 
 		public Podcast podcast;						// Refers to the podcast this coverart represents
 
-
-		/*
-		 * Constructor for CoverArt given an image path and a podcast
-		 */
-		public CoverArt(string path, Podcast podcast, bool? show_mimetype = false) {
-		
+		public CoverArt(Podcast podcast, bool? show_mimetype = false) {
 			this.podcast = podcast;
 			this.margin = 10;
 			this.orientation = Gtk.Orientation.VERTICAL;
-			
+			this.tooltip_text = podcast.name.replace("%27", "'");
+			this.valign = Align.START;
 
 			try {
-
-				// Load the actual cover art
-				var file = GLib.File.new_for_uri(path.replace("%27", "'"));
-
+				var file = GLib.File.new_for_uri(podcast.coverart_uri.replace("%27", "'"));
 				var icon = new GLib.FileIcon(file);
 
 				var image = new Gtk.Image.from_gicon(icon, Gtk.IconSize.DIALOG);
 				image.pixel_size = COVER_SIZE;
 				image.set_no_show_all(false);
-				image.show();
-
+				//  image.show();
 
 	            // Load the banner to be drawn on top of the cover art
 				var triangle_pixbuf = new Gdk.Pixbuf.from_resource_at_scale("/com/github/needle-and-thread/vocal/banner.png", 75, 75, true);
@@ -99,35 +91,39 @@ namespace Vocal {
 			count_label.set_alignment(1,0);
 			count_label.margin_right = 5;
 
-			// Add a tooltip
-			this.tooltip_text = podcast.name.replace("%27", "'");
-
-			// Set up the overlays
-
 			count_overlay.add_overlay(count_label);
 			triangle_overlay.add_overlay(count_overlay);
 			
-			this.pack_start(triangle_overlay, false, false, 0);
-
-			this.valign = Align.START;
+			pack_start(triangle_overlay, false, false, 0);
 
 			podcast_name_label = new Gtk.Label("<b>" + GLib.Uri.unescape_string(podcast.name).replace("&", """&amp;""") + "</b>");
 			podcast_name_label.wrap = true;
 			podcast_name_label.use_markup = true;
 			podcast_name_label.max_width_chars = 15;
-			this.pack_start(podcast_name_label, false, false, 12);
+			pack_start(podcast_name_label, false, false, 12);
 			
 			if(!VocalSettings.get_default_instance().show_name_label) {
 			    podcast_name_label.no_show_all = true;
 			    podcast_name_label.visible = false;
 			}
 
+			update_unplayed_count();
+			podcast.unplayed_episodes_updated.connect(() => {
+				update_unplayed_count();
+			});
+
 			show_all();
 		}
 
-		/*
-		 * Creates a pixbuf given an InputStream
-		 */
+		private void update_unplayed_count() {
+			if(podcast.unplayed_count > 0) {
+				set_count(podcast.unplayed_count);
+				show_count();
+			} else {
+				hide_count();
+			}
+		}
+
         public Gdk.Pixbuf create_cover_image (InputStream input_stream) {
             var cover_image = new Gdk.Pixbuf.from_stream (input_stream);
 
@@ -154,11 +150,7 @@ namespace Vocal {
             return cover_image;
         }
 
-		/*
-		 * Hides the banner and the count
-		 */
-		public void hide_count()
-		{
+		public void hide_count() {
 		    if (count_label != null && triangle != null) {
 			    count_label.set_no_show_all(true);
 			    count_label.hide();
