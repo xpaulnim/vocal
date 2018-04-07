@@ -24,12 +24,13 @@ namespace Vocal {
 	public class Episode : Object {
 
         public signal void played_status_updated();
+        public signal void download_status_changed();
 
-		public string           title = "";              // the title of the episode
-		public string           description = "";        // the description/shownotes
+		public string           title = "";
+		public string           description = "";
 		public string           uri = "";                // the remote location for the media file
 		public string           local_uri = "";          // the local location for the media file, if any
-		public double           last_played_position;    // the latest position that has been played
+		public double           last_played_position;
         public string           date_released;           // when the episode was released, in string form
         private EpisodeStatus   _status;
 		public EpisodeStatus    status {
@@ -41,20 +42,20 @@ namespace Vocal {
                 played_status_updated();
             }
         }
-		public DownloadStatus	current_download_status; // whether the episode is downloaded or not downloaded
+        private DownloadStatus	_download_status;
+        public DownloadStatus download_status {
+            get {
+                return _download_status;
+            }
+
+            set {
+                _download_status = value;
+                download_status_changed();
+            }
+        }
 
 		public Podcast          parent;                  // the parent that the episode belongs to
         public DateTime         datetime_released;       // the datetime corresponding the when the episode was released
-
-        //  public void mark_as_unplayed() {
-        //      status = EpisodeStatus.UNPLAYED;
-
-        //  }
-
-        //  public void mark_as_played() {
-        //      status = EpisodeStatus.PLAYED;
-        //      status_updated();
-        //  }
 
 		/*
 		 * Gets the playback uri based on whether the file is local or remote
@@ -114,9 +115,8 @@ namespace Vocal {
             parent = null;
             local_uri = null;
             status = EpisodeStatus.UNPLAYED;
-            current_download_status = DownloadStatus.NOT_DOWNLOADED;
+            _download_status = DownloadStatus.NOT_DOWNLOADED;
             last_played_position = 0;
-
         }
 
         /*
@@ -124,7 +124,6 @@ namespace Vocal {
          * in the feed.
          */
         public void set_datetime_from_pubdate() {
-
             if(date_released != null) {
                 GLib.Time tm = GLib.Time ();
                 tm.strptime (date_released, "%a, %d %b %Y %H:%M:%S %Z");
@@ -169,5 +168,26 @@ namespace Vocal {
      */
     public enum DownloadStatus {
         DOWNLOADED, NOT_DOWNLOADED;
+
+        public string to_string () {
+            switch (this) {
+            case DownloadStatus.DOWNLOADED:
+                return "downloaded";
+            case DownloadStatus.NOT_DOWNLOADED:
+                return "not_downloaded";
+            default:
+                error("Unrecognized download status");
+            }
+        }
+    
+        public static DownloadStatus from_string (string str) {
+            if (str == "downloaded") {
+                return DownloadStatus.DOWNLOADED;
+            } else if (str == "not_downloaded") {
+                return DownloadStatus.NOT_DOWNLOADED;
+            } else {
+                error ("Unrecognized download status: %s", str);
+            }
+        }
     }
 }

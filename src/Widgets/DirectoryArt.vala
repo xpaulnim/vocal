@@ -74,7 +74,6 @@ namespace Vocal {
 			summary_label = new Gtk.Label ("");
 			summary_label.wrap = true;
 			details_popover.add(summary_label);
-			
 
 			details_button.clicked.connect(() => {
 				if(summary.length > 0) {
@@ -82,10 +81,9 @@ namespace Vocal {
 				} else if (url.contains("itunes.apple")) {
 					var itunes = new iTunesProvider();
 					string rss_url = itunes.get_rss_from_itunes_url(url);
-							var fp = new FeedParser();
-					string details_summary =  fp.find_description_from_file(rss_url);
+					var feed_parser = new FeedParser();
+					string details_summary =  feed_parser.find_description_from_file(rss_url);
 					summary_label.set_text(details_summary.length > 0 ? details_summary : _("No summary available."));
-					fp = null;
                 }
 				summary_label.max_width_chars = 64;
 				summary_label.margin = 20;
@@ -93,13 +91,14 @@ namespace Vocal {
 			});	
 
             var subscribe_button = new Gtk.Button.from_icon_name("list-add-symbolic", Gtk.IconSize.SMALL_TOOLBAR);
+            subscribe_button.valign = Gtk.Align.START;
             subscribe_button.tooltip_text = _("Subscribe");
-            if (Utils.check_elementary ())
+            if (Utils.check_elementary ()) {
                 subscribe_button.relief = Gtk.ReliefStyle.NONE;
+            }
             subscribe_button.clicked.connect(() => {
                 subscribe_button_clicked(url);
             });
-		    subscribe_button.valign = Gtk.Align.START;
 
             button_box = new Gtk.Box(Gtk.Orientation.VERTICAL, 5);
             button_box.add(details_button);

@@ -24,10 +24,7 @@ namespace Vocal {
     
     public class PodcastView : Gtk.Box {
         
-        /* Signals */
-        
-        public signal void on_hide_played();
-        public signal void play_episode_requested();
+        public signal void play_episode_requested(Episode episode);
         public signal void enqueue_episode(Episode episode);
         public signal void download_episode_requested(Episode episode);
         public signal void mark_all_episodes_as_played_requested();
@@ -38,17 +35,15 @@ namespace Vocal {
         public signal void download_episodes_requested(ArrayList<Episode> episodes);
         public signal void mark_multiple_episodes_as_played(Gee.ArrayList<Episode> episodes);
         public signal void mark_multiple_episodes_as_unplayed(Gee.ArrayList<Episode> episodes);
-        public signal void download_all_requested();
-        public signal void delete_podcast_requested();
+        public signal void download_all_requested(Gee.ArrayList<Episode> episodes);
+        public signal void on_unsubscribe_from_podcast(Podcast podcast);
         public signal void unplayed_count_changed(int n);
         public signal void go_back();
-        
-        public signal void new_cover_art_set(string path);
+        public signal void on_new_cover_art_selected(string path, Podcast podcast);
         
         
         public Podcast 			podcast;				// The parent podcast
-        private Controller controller;
-        public int 				current_episode_index;  // The index of the episode currently being used
+        private Controller      controller;
         
         private Gtk.ListBox listbox;
         private Gtk.Paned paned;
@@ -57,17 +52,11 @@ namespace Vocal {
         private Gtk.Label name_label;
         private Gtk.Label count_label;
         private Gtk.Label description_label;
-        private string count_string;
         
         private Gtk.Menu right_click_menu;
         
-        private bool hide_played = false;
-        
         private GLib.ListStore episode_model = new GLib.ListStore(typeof(Episode));
-		private EpisodeDetailBox previously_selected_box;
-        private EpisodeDetailBox previously_activated_box;
-		private Gtk.ScrolledWindow scrolled;
-		private int largest_box_size;
+        private EpisodeDetailBox previous_selected_episode_detail_box;
         
 		private Gtk.Box image_box;
 		private Gtk.Box details_box;
@@ -75,18 +64,13 @@ namespace Vocal {
 		private Gtk.Box label_box;
         
 		private Gtk.Image image = null;
-		public Shownotes shownotes;
+        public Shownotes shownotes;
         
         public PodcastView (Controller controller) {
             this.controller = controller;
             
-            largest_box_size = 500;
-            
-			this.current_episode_index = 0;
-			this.orientation = Gtk.Orientation.VERTICAL;
+			orientation = Gtk.Orientation.VERTICAL;
             var horizontal_box = new Gtk.Box(Gtk.Orientation.HORIZONTAL, 0);
-            
-			count_string = null;
             
             var toolbar = new Gtk.Box(Gtk.Orientation.HORIZONTAL, 0);
             toolbar.get_style_context().add_class("toolbar");
@@ -110,16 +94,15 @@ namespace Vocal {
             var download_all = new Gtk.Button.from_icon_name(Utils.check_elementary() ? "browser-download-symbolic" : "document-save-symbolic", Gtk.IconSize.MENU);
             download_all.tooltip_text = _("Download all episodes");
             download_all.clicked.connect(() => {
-                download_all_requested();
+                download_all_requested(this.podcast.episodes);
             });
             
             var hide_played_button = new Gtk.Button.from_icon_name("view-list-symbolic", Gtk.IconSize.MENU);
             hide_played_button.tooltip_text = _("Hide episodes that have already been played");
             hide_played_button.clicked.connect(() => {
-                hide_played = !hide_played;
+                controller.settings.toggle_hide_played();
                 
                 populate_episodes();
-                show_all();
             });
             
             var edit = new Gtk.Button.from_icon_name(Utils.check_elementary() ? "edit-symbolic" : "document-properties-symbolic",Gtk.IconSize.MENU);
@@ -135,23 +118,18 @@ namespace Vocal {
                 return true;
             });
             
-            var remove = new Gtk.Button.with_label(_("Unsubscribe"));
-            remove.clicked.connect (() => {
-                delete_podcast_requested();
+            var unsubscribe_button = new Gtk.Button.with_label(_("Unsubscribe"));
+            unsubscribe_button.clicked.connect (() => {
+                on_unsubscribe_from_podcast(this.podcast);
             });
-            remove.set_no_show_all(false);
-            remove.get_style_context().add_class("destructive-action");
-            remove.show();
+            unsubscribe_button.set_no_show_all(false);
+            unsubscribe_button.get_style_context().add_class("destructive-action");
+            unsubscribe_button.show();
             
             image_box = new Gtk.Box(Gtk.Orientation.HORIZONTAL, 0);
             
-            
-            details_box = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
-            actions_box = new Gtk.Box(Gtk.Orientation.HORIZONTAL, 2);
-            label_box = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
-            
 			name_label = new Gtk.Label("Name");
-			count_label = new Gtk.Label(count_string);
+			count_label = new Gtk.Label("Count");
 			name_label.max_width_chars = 15;
 			name_label.wrap = true;
 			name_label.justify = Gtk.Justification.CENTER;
@@ -164,7 +142,6 @@ namespace Vocal {
             description_label.valign = Gtk.Align.START;
             description_label.get_style_context().add_class("podcast-view-description");
             
-            // Set up a scrolled window
             var description_window = new Gtk.ScrolledWindow(null, null);
             description_window.add(description_label);
             description_window.height_request = 130;
@@ -173,15 +150,16 @@ namespace Vocal {
 			name_label.get_style_context().add_class("h2");
             count_label.get_style_context().add_class("h4");
             
+            label_box = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
 			label_box.pack_start(name_label, false, false, 5);
             label_box.pack_start(description_window, true, true, 0);
-            
 			label_box.pack_start(count_label, false, false, 0);
             
+            actions_box = new Gtk.Box(Gtk.Orientation.HORIZONTAL, 2);
 			actions_box.pack_start(download_all, true, true, 0);
             actions_box.pack_start(edit, true, true, 0);
 			actions_box.pack_start(hide_played_button, true, true, 0);
-			actions_box.pack_start(remove, true, true, 0);
+			actions_box.pack_start(unsubscribe_button, true, true, 0);
             
 			var vertical_box = new Gtk.Box(Gtk.Orientation.VERTICAL, 5);
 			vertical_box.pack_start(label_box, true, true, 0);
@@ -189,6 +167,7 @@ namespace Vocal {
             vertical_box.margin = 12;
             vertical_box.margin_bottom = 0;
             
+            details_box = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
             details_box.pack_start(vertical_box, true, true, 12);
 			details_box.pack_start(image_box, false, false, 0);
             details_box.valign = Gtk.Align.FILL;
@@ -212,15 +191,33 @@ namespace Vocal {
             listbox.expand = true;
             listbox.get_style_context().add_class("sidepane_listbox");
             listbox.get_style_context().add_class("view");
+            listbox.button_press_event.connect(on_button_press_event);            
+            listbox.row_selected.connect((row) => {
+                if(row != null && row.get_index() >= 0) {
+                    var episode = episode_model.get_item(row.get_index()) as Episode;
+                    shownotes.set_episode(episode);
+                }
+            });
+            listbox.row_activated.connect(on_row_activated);
             
-            scrolled = new Gtk.ScrolledWindow (null, null);
+            var empty_label = new Gtk.Label(_("No episodes available."));
+            empty_label.justify = Gtk.Justification.CENTER;
+            empty_label.margin = 10;
+            empty_label.get_style_context().add_class("h3");
+            listbox.set_placeholder(empty_label);
+            
+            var scrolled = new Gtk.ScrolledWindow (null, null);
             scrolled.add(listbox);
             
             paned.pack1(scrolled, true, true);
             
 			shownotes = new Shownotes();
-            shownotes.play_button.clicked.connect(() => { play_episode_requested(); });
-            shownotes.queue_button.clicked.connect(() => { enqueue_episode_internal(); });
+            shownotes.play_episode.connect((episode) => {
+                play_episode_requested(episode);
+            });
+            shownotes.on_queue_episode.connect((episode) => { 
+                enqueue_episode(episode); 
+            });
             shownotes.on_download_episode.connect((episode) => {
                 download_episode_requested(episode);
             });
@@ -239,10 +236,6 @@ namespace Vocal {
             this.pack_start(horizontal_box, true, true, 0);
         }
         
-        private void enqueue_episode_internal() {
-            enqueue_episode(podcast.episodes[current_episode_index]);
-        }
-        
         private bool on_button_press_event(Gdk.EventButton e) {
             if(e.button == 3 && podcast.episodes.size > 0) {
                 right_click_menu = new Gtk.Menu();
@@ -252,7 +245,6 @@ namespace Vocal {
                 
                 if(rows.length() > 1) {
                     var mark_played_menuitem = new Gtk.MenuItem.with_label(_("Mark selected episodes as played"));
-                    
                     mark_played_menuitem.activate.connect(() => {
                         foreach(ListBoxRow row in rows) {
                             var episode = episode_model.get_item(row.get_index()) as Episode;
@@ -260,7 +252,6 @@ namespace Vocal {
                         }
                         
                         mark_multiple_episodes_as_played(selected_episodes);
-                        reset_unplayed_count();
                     });
                     right_click_menu.add(mark_played_menuitem);
                     
@@ -272,7 +263,6 @@ namespace Vocal {
                         }
                         
                         mark_multiple_episodes_as_unplayed(selected_episodes);
-                        reset_unplayed_count();
                     });
                     right_click_menu.add(mark_unplayed_menuitem);
                     
@@ -321,17 +311,17 @@ namespace Vocal {
                     } else {
                         var mark_unplayed_menuitem = new Gtk.MenuItem.with_label(_("Mark as unplayed"));
                         mark_unplayed_menuitem.activate.connect(() => {
-                            mark_episode_as_played_requested(episode);
+                            mark_episode_as_unplayed_requested(episode);
                         });
                         right_click_menu.add(mark_unplayed_menuitem);
                     }
                     
-                    if(episode.current_download_status == DownloadStatus.DOWNLOADED) {
+                    if(episode.download_status == DownloadStatus.DOWNLOADED) {
                         var delete_menuitem = new Gtk.MenuItem.with_label(_("Delete Local File"));
                         
                         delete_menuitem.activate.connect(() => {
                             Gtk.MessageDialog msg = new Gtk.MessageDialog (controller.window, Gtk.DialogFlags.MODAL, Gtk.MessageType.WARNING, Gtk.ButtonsType.NONE,
-                            _("Are you sure you want to delete the downloaded episode '%s'?").printf(podcast.episodes[current_episode_index].title.replace("%27", "'")));
+                            _("Are you sure you want to delete the downloaded episode '%s'?").printf(episode.title.replace("%27", "'")));
                             
                             msg.add_button ("_No", Gtk.ResponseType.CANCEL);
                             Gtk.Button delete_button = (Gtk.Button) msg.add_button("_Yes", Gtk.ResponseType.YES);
@@ -367,11 +357,27 @@ namespace Vocal {
         }
         
         public void set_podcast(Podcast podcast) {
+            if(this.podcast == podcast) {
+                return;
+            }
+            
             this.podcast = podcast;
             
+            set_unplayed_text();
+            podcast.unplayed_episodes_updated.connect(set_unplayed_text);
+            
+            update_coverart();
+            podcast.new_cover_art_set.connect(update_coverart);
+            
+			name_label.set_text(podcast.name.replace("%27", "'"));
+            description_label.set_text(GLib.Uri.unescape_string(podcast.description).replace("\n",""));
+            
+            populate_episodes();
+        }
+        
+        private void update_coverart() {
             if(image != null) {
-                image_box.remove(image);
-                image = null;
+                image.destroy();
             }
             
             try {
@@ -387,51 +393,41 @@ namespace Vocal {
                 error(e.message);
             }
             
-			name_label.set_text(podcast.name.replace("%27", "'"));
-            description_label.set_text(GLib.Uri.unescape_string(podcast.description).replace("""\n""",""));
-            
-            populate_episodes();
-            
-            // Select the first podcast
-            var first_row = listbox.get_row_at_index(0);
-            //  listbox.select_row(first_row);
-            
             show_all();
         }
         
-        /*
-        * When a row is activated, clear the unplayed icon if there is one and request
-        * the corresponding episode be played
-        */
         private void on_row_activated(ListBoxRow? row) {
-            
-            if(previously_activated_box != null) {
-                previously_activated_box.clear_now_playing();
+            if(previous_selected_episode_detail_box == null) {
+                return;
             }
             
-            if(podcast.episodes[current_episode_index].status == EpisodeStatus.UNPLAYED) {
-                
-                // Mark the box as played
-                /*          previously_activated_box.mark_as_played();
-                
-                Set the new unplayed count in the top area
-                unplayed_count--;
-                set_unplayed_text();
-                
-                Re-mark the box so it doesn't show if hide played is enabled
-                if(controller.settings.hide_played && unplayed_count > 0) {
-                    previously_activated_box. get_parent (). set_no_show_all(true);
-                    previously_activated_box. get_parent (). visible = false;
-                }  */
-                
-                // No matter what, mark this box as now playing
-                previously_activated_box.mark_as_now_playing();
-                
-                play_episode_requested();
+            var previous_selected_list_box_row = previous_selected_episode_detail_box.get_parent() as ListBoxRow;
+            var episode_detail_box = row.get_child() as EpisodeDetailBox;
+            if(episode_detail_box == null) {
+                return;
             }
+            
+            var episode = episode_model.get_item(row.get_index()) as Episode;
+            mark_episode_as_played_requested(episode); // should also set the detail box as played
+            
+            previous_selected_episode_detail_box.clear_now_playing();
+            
+            // FIXME: If the episode is now playing, maybe this should not be hidden until done playing
+            //  Re-mark the box so it doesn't show if hide played is enabled
+            if(controller.settings.hide_played) {
+                previous_selected_list_box_row.set_no_show_all(true);
+                previous_selected_list_box_row.visible = false;
+            }
+            
+            // No matter what, mark this box as now playing
+            episode_detail_box.mark_as_now_playing();
+            
+            play_episode_requested(episode);
+            
+            previous_selected_episode_detail_box = episode_detail_box;
         }
         
-        public Widget create_episode_detail_box(Object item) {
+        private Widget create_episode_detail_box(Object item) {
             Episode episode = item as Episode;
             
             var episode_detail_box = new EpisodeDetailBox(episode, controller.on_elementary);
@@ -440,19 +436,16 @@ namespace Vocal {
             episode_detail_box.margin_top = 6;
             episode_detail_box.margin_left = 6;
             episode_detail_box.border_width = 0;
-            if(episode_detail_box.top_box_width > this.largest_box_size) {
-                this.largest_box_size = episode_detail_box.top_box_width;
-            }
-            episode_detail_box.download_button.clicked.connect(() => {
+            
+            episode_detail_box.download_button_clicked.connect(() => {
                 episode_detail_box.hide_download_button();
                 download_episode_requested(episode);
             });
             
-            /*
             if(episode == controller.current_episode) {
                 episode_detail_box.mark_as_now_playing();
+                previous_selected_episode_detail_box = episode_detail_box;
             }
-            */
             
             episode.played_status_updated.connect(() => {
                 episode_detail_box.update_played_status();
@@ -464,70 +457,36 @@ namespace Vocal {
         public void populate_episodes(int? limit = 25) {
             episode_model.remove_all();
             
-            if(this.podcast.episodes.size > 0) {
-                listbox.row_selected.connect((row) => {
-                    var episode = episode_model.get_item(row.get_index()) as Episode;
-                    shownotes.set_episode(episode);
-                });
-                listbox.row_activated.connect(on_row_activated);
-                
-                for (int i = 0; i < podcast.episodes.size; i++) {
-                    if(hide_played) {
-                        if(podcast.episodes[i].status == EpisodeStatus.UNPLAYED) {
-                            episode_model.append(podcast.episodes[i]);
-                        }
-                    } else {
+            if(this.podcast.episodes.size < 1) {
+                return;
+            }
+            
+            for (int i = 0; i < podcast.episodes.size; i++) {
+                if(controller.settings.hide_played) {
+                    if(podcast.episodes[i].status == EpisodeStatus.UNPLAYED) {
                         episode_model.append(podcast.episodes[i]);
                     }
+                } else {
+                    episode_model.append(podcast.episodes[i]);
                 }
-                
-                var increase_button = new Gtk.Button.with_label(_("Show more episodes"));
-                increase_button.clicked.connect(() => {
-                    //  populate_episodes(this.limit += 25);
-                    this.show_all();
-                });
-                
-                /*
-                if(controller.settings.hide_played && unplayed_count == 0) {
-                    var no_new_label = new Gtk.Label(_("No new episodes."));
-                    no_new_label.margin_top = 25;
-                    no_new_label.get_style_context().add_class("h3");
-                    listbox.prepend(no_new_label);
-                }
-                */
-            } else {
-                var empty_label = new Gtk.Label(_("No episodes available."));
-                empty_label.justify = Gtk.Justification.CENTER;
-                empty_label.margin = 10;
-                
-                empty_label.get_style_context().add_class("h3");
-                listbox.prepend(empty_label);
             }
             
-            listbox.button_press_event.connect(on_button_press_event);
+            var increase_button = new Gtk.Button.with_label(_("Show more episodes"));
+            increase_button.clicked.connect(() => {
+                //  populate_episodes(this.limit += 25);
+            });
             
-            set_unplayed_text();
-        }
-        
-        /*
-        * Resets the unplayed count and iterates through the boxes to obtain a new one
-        */
-        public void reset_unplayed_count() {
-            
-            /*      int previous_count = unplayed_count;
-            
-            unplayed_count = 0;
-            
-            foreach(Episode e in podcast.episodes) {
-                if(e.status == EpisodeStatus.UNPLAYED)
-                unplayed_count++;
+            /*
+            if(controller.settings.hide_played && unplayed_count == 0) {
+                var no_new_label = new Gtk.Label(_("No new episodes."));
+                no_new_label.margin_top = 25;
+                no_new_label.get_style_context().add_class("h3");
+                listbox.prepend(no_new_label);
             }
+            */
             
-            set_unplayed_text();
-            
-            // Is the number of unplayed episodes now different?
-            if(previous_count != unplayed_count)
-            unplayed_count_changed(unplayed_count);  */
+            select_row_at_index(0);
+            show_all();
         }
         
         private void on_change_album_art() {
@@ -556,28 +515,23 @@ namespace Vocal {
             
             file_chooser.destroy();
             
-            //If the user selects a file, get the name and parse it
             if (decision == Gtk.ResponseType.ACCEPT) {
-                GLib.File cover = GLib.File.new_for_path(file_name);
-                var icon = new GLib.FileIcon(cover);
-                image.gicon = icon;
-                image.pixel_size = 250;
-                
-                new_cover_art_set(file_name);
+                info("accepting cover art change %s", file_name);
+                on_new_cover_art_selected(file_name, this.podcast);
             }
         }
         
-        /*
-        * Sets the unplayed text (assumes the unplayed count has already been set)
-        */
         public void set_unplayed_text() {
-            string count_string = null;
-            /*    if(unplayed_count > 0) {
-                count_string = _("%d unplayed episodes".printf(unplayed_count));
-            } else {
-                count_string = "";
-            }  */
+            string count_string = _("%d unplayed episodes".printf(this.podcast.unplayed_count));
+            
             count_label.set_text(count_string);
+        }
+
+        private void select_row_at_index(int index) {
+            if(listbox.get_row_at_index(index) != null) {
+                listbox.select_row(listbox.get_row_at_index(index));
+                previous_selected_episode_detail_box = listbox.get_row_at_index(index) as EpisodeDetailBox;
+            }
         }
         
         public void select_episode(Episode episode_to_select) {
@@ -593,24 +547,24 @@ namespace Vocal {
             }
         }
         
-        private void on_link_to_file() {
+        private void on_link_to_file(Episode episode) {
             Gdk.Display display = controller.window.get_display ();
             Gtk.Clipboard clipboard = Gtk.Clipboard.get_for_display (display, Gdk.SELECTION_CLIPBOARD);
-            string uri = podcast.episodes[current_episode_index].uri;
+            string uri = episode.uri;
             clipboard.set_text(uri,uri.length);
         }
         
-        private void on_tweet() {
-            string uri = Utils.get_shareable_link_for_episode(podcast.episodes[current_episode_index]);
-            string message_text = GLib.Uri.escape_string(_("I'm listening to %s from %s").printf(podcast.episodes[current_episode_index].title,podcast.episodes[current_episode_index].parent.name));
+        private void on_tweet(Episode episode) {
+            string uri = Utils.get_shareable_link_for_episode(episode);
+            string message_text = GLib.Uri.escape_string(_("I'm listening to %s from %s").printf(episode.title,episode.parent.name));
             string new_tweet_uri = "https://twitter.com/intent/tweet?text=%s&url=%s".printf(message_text, GLib.Uri.escape_string(uri));
             Gtk.show_uri (null, new_tweet_uri, 0);
         }
         
-        private void on_copy_shareable_link() {
+        private void on_copy_shareable_link(Episode episode) {
             Gdk.Display display = controller.window.get_display ();
             Gtk.Clipboard clipboard = Gtk.Clipboard.get_for_display (display, Gdk.SELECTION_CLIPBOARD);
-            string uri = Utils.get_shareable_link_for_episode(podcast.episodes[current_episode_index]);
+            string uri = Utils.get_shareable_link_for_episode(episode);
             clipboard.set_text(uri,uri.length);
         }
     }

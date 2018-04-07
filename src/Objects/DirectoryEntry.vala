@@ -19,7 +19,7 @@
 
 namespace Vocal {
     
-    public class DirectoryEntry { 
+    public class DirectoryEntry : Object { 
     
         public string artist = "";
         public string artworkUrl55 = "";

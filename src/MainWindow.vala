@@ -43,7 +43,7 @@ namespace Vocal {
 
         /* Secondary widgets */
 
-        public AddFeedDialog add_feed;
+        private AddFeedDialog add_feed;
         private DownloadsPopover downloads;
         public ShowNotesPopover shownotes;
         private QueuePopover queue_popover;
@@ -72,7 +72,6 @@ namespace Vocal {
         public CoverArt current_episode_art;
         public Gtk.Widget current_widget;
         public Gtk.Widget previous_widget;
-        //  public Gee.ArrayList<CoverArt> all_art;
 
         private bool ignore_window_state_change = false;
         private uint hiding_timer = 0; // Used for hiding video controls
@@ -80,9 +79,6 @@ namespace Vocal {
         public bool fullscreened = false;
         private Gtk.Box parent_box = null;
 
-		/*
-		 * Constructor for the main window. Creates the window and gets everything going.
-		 */
         public MainWindow (Controller controller) {
         
             this.controller = controller;
@@ -270,10 +266,6 @@ namespace Vocal {
             notebook = new Gtk.Stack();
             notebook.transition_type = Gtk.StackTransitionType.SLIDE_LEFT_RIGHT;
             notebook.transition_duration = 200;
-            
-            info ("Creating podcast view."); 
-            
-            
 
             info ("Creating welcome screen.");
             
@@ -296,26 +288,43 @@ namespace Vocal {
             
             all_podcasts_view = new AllPodcastsView();
             all_podcasts_view.on_podcast_selected.connect(on_child_activated);
+            controller.library.on_unsubscribed_from_podcast.connect(() => {
+                switch_visible_page(all_podcasts_view);
+                populate_views();
+            });
 		    
             // Set up all the signals for the podcast view
             podcast_view = new PodcastView (controller);
             podcast_view.play_episode_requested.connect(play_different_track);
+            
             podcast_view.download_episode_requested.connect(download_episode);
-            podcast_view.enqueue_episode.connect(enqueue_episode);
+            podcast_view.download_all_requested.connect((episodes) => {
+                foreach (var episode in episodes) {
+                    download_episode(episode);
+                }
+            });
+            
+            podcast_view.enqueue_episode.connect(controller.library.enqueue_episode);
+
             podcast_view.mark_episode_as_played_requested.connect(controller.library.mark_episode_as_played);
-            podcast_view.mark_episode_as_unplayed_requested.connect(controller.library.mark_episode_as_unplayed);
-            podcast_view.delete_local_episode_requested.connect(on_episode_delete_request);
-            podcast_view.mark_all_episodes_as_played_requested.connect(on_mark_as_played_request);
-            podcast_view.download_all_requested.connect(on_download_all_request);
-            podcast_view.delete_podcast_requested.connect(on_remove_request);
-            podcast_view.delete_multiple_episodes.connect(controller.library.delete_local_episodes);
             podcast_view.mark_multiple_episodes_as_played.connect(controller.library.mark_episodes_as_played);
+            
+            podcast_view.mark_episode_as_unplayed_requested.connect(controller.library.mark_episode_as_unplayed);
             podcast_view.mark_multiple_episodes_as_unplayed.connect(controller.library.mark_episodes_as_unplayed);
-            podcast_view.unplayed_count_changed.connect(on_unplayed_count_changed);
-            //  podcast_view.new_cover_art_set.connect(on_new_cover_art_set);
+
+            podcast_view.mark_all_episodes_as_played_requested.connect(on_mark_as_played_request);
+            
+            podcast_view.delete_local_episode_requested.connect(on_episode_delete_request);
+            podcast_view.delete_multiple_episodes.connect(controller.library.delete_local_episodes);
+
+            podcast_view.on_unsubscribe_from_podcast.connect(on_remove_request);
+
+            //  podcast_view.unplayed_count_changed.connect(on_unplayed_count_changed);
+            podcast_view.on_new_cover_art_selected.connect(controller.library.set_new_local_album_art);
             podcast_view.go_back.connect(() => {
                 switch_visible_page(all_podcasts_view);
             });
+            //  podcast_view.on_hide_played.connect(controller.settings.toggle_hide_played);
 
             // Set up the box that gets displayed when importing from .OPML or .XML files during the first launch
             import_message_box = new Gtk.Box(Gtk.Orientation.VERTICAL, 25);
@@ -343,7 +352,7 @@ namespace Vocal {
             info ("Creating directory view.");
             
             directory = new DirectoryView(controller.itunes, show_complete_button);
-            directory.on_new_subscription.connect(on_new_subscription);
+            directory.on_new_subscription.connect(controller.add_podcast_feed);
             directory.return_to_library.connect(on_return_to_library);
             directory.return_to_welcome.connect(() => {
                 switch_visible_page(welcome);
@@ -456,7 +465,7 @@ namespace Vocal {
 
             // Create the search box
             search_results_view = new SearchResultsView(controller.library);
-            search_results_view.on_new_subscription.connect(on_new_subscription);
+            search_results_view.on_new_subscription.connect(controller.add_podcast_feed);
             search_results_view.return_to_library.connect(() => {
                 switch_visible_page(previous_widget);
             });
@@ -571,6 +580,7 @@ namespace Vocal {
 
             controller.current_episode = e;
             queue_popover.hide();
+            // FIXME: Maybe the episode should remain in the queue until it has finished playing
             controller.library.remove_episode_from_queue(e);
 
             controller.play();
@@ -584,11 +594,8 @@ namespace Vocal {
         /*
          * Switches the current track and requests the newly selected track starts playing
          */
-        private void play_different_track () {
-
-            // Get the episode
-            int index = podcast_view.current_episode_index;
-            controller.current_episode = podcast_view.podcast.episodes[index];
+        private void play_different_track (Episode episode) {
+            controller.current_episode = episode;
 
             controller.player.pause();
             controller.play();
@@ -609,6 +616,9 @@ namespace Vocal {
             
             // Begin the process of downloading the episode (asynchronously)
             var details_box = controller.library.download_episode(episode);
+            if(details_box == null) {
+                return;
+            }
             details_box.cancel_requested.connect(on_download_canceled);
             details_box.new_percentage_available.connect(() => {
                 double overall_percentage = 1.0;
@@ -623,18 +633,12 @@ namespace Vocal {
             downloads.add_download(details_box);
         }
 
-
-        public void enqueue_episode (Episode episode) {
-            controller.library.enqueue_episode(episode);
-        }
-
-
         /*
          * Show a dialog to add a single feed to the controller.library
          */
         public void add_new_podcast() {
             add_feed = new AddFeedDialog(this, controller.on_elementary);
-            add_feed.response.connect(on_add_podcast_feed);
+            add_feed.on_add_feed.connect(controller.add_podcast_feed);
             add_feed.show_all();
         }
 
@@ -916,8 +920,8 @@ namespace Vocal {
          * Handles requests to add individual podcast feeds (either from welcome screen or
          * the add feed menuitem
          */
-        public void on_add_podcast_feed(int response_id) {
-            controller.add_podcast_feed(response_id, add_feed.entry.get_text(), null);
+        public void on_add_podcast_feed(string feed) {
+            controller.add_podcast_feed(feed);
         }
 
 
@@ -928,20 +932,6 @@ namespace Vocal {
             show_details(podcast);
         }
 
-
-		/*
-		 * Called when the user requests to download all episodes from the sidepane
-		 */
-        public void on_download_all_request() {
-            foreach(Episode e in controller.highlighted_podcast.episodes) {
-                download_episode(e);
-            }
-        }
-
-
-        /*
-         * Mark the episode as not being downloaded
-         */
          private void on_download_canceled(Episode episode) {
 
             if(podcast_view != null && episode.parent == podcast_view.podcast) {
@@ -951,10 +941,6 @@ namespace Vocal {
             }
         }
 
-
-        /*
-         * Mark an episode as being downloaded
-         */
         public void on_download_finished(Episode episode) {
 
             if (podcast_view != null && episode.parent == podcast_view.podcast) {
@@ -984,16 +970,11 @@ namespace Vocal {
                 fullscreened = false;
                 ignore_window_state_change = true;
             } else {
-
                 fullscreen();
                 fullscreened = true;
             }
         }
 
-
-        /*
-         * Called during an import event when the parser has started parsing a new feed
-         */
         public void on_import_status_changed(int current, int total, string title) {
             show_all();
             toolbar.playback_box.set_message_and_percentage("Adding feed %d/%d: %s".printf(current, total, title), (double)((double)current/(double)total));
@@ -1117,59 +1098,29 @@ namespace Vocal {
             return false;
         }
 
+        public void on_remove_request(Podcast podcast) {
+            Gtk.MessageDialog msg = new Gtk.MessageDialog (this, Gtk.DialogFlags.MODAL, Gtk.MessageType.WARNING, Gtk.ButtonsType.NONE,
+                _("Are you sure you want to remove '%s' from your library?"), podcast.name.replace("%27", "'"));
 
-        /*
-         * Called when the subscribe button is clicked either on the store or on a search page
-         */
-        public void on_new_subscription(string itunes_url) {
+            msg.add_button (_("No"), Gtk.ResponseType.NO);
+            var delete_button = msg.add_button(_("Yes"), Gtk.ResponseType.YES) as Gtk.Button;
+            delete_button.get_style_context().add_class("destructive-action");
 
-            string name;
+            var image = new Gtk.Image.from_icon_name("dialog-warning", Gtk.IconSize.DIALOG);
+            msg.image = image;
+            msg.image.show_all();
+            msg.response.connect ((response_id) => {
+                switch (response_id) {
+                    case Gtk.ResponseType.YES:
+                        controller.library.unsubscribe_from_podcast(podcast);
+                        break;
+                    case Gtk.ResponseType.NO:
+                        break;
+                }
 
-            // We are given an iTunes store URL. We need to get the actual RSS feed from  this
-            string rss = controller.itunes.get_rss_from_itunes_url(itunes_url, out name);
-
-            if(name == null) {
-                name = "Unknown";
-            }
-
-            controller.add_podcast_feed(Gtk.ResponseType.OK, rss, name);
-        }
-
-
-        /*
-         * Called when the user requests to remove a podcast from the controller.library via the right-click menu
-         */
-        public void on_remove_request() {
-            if(controller.highlighted_podcast != null) {
-                Gtk.MessageDialog msg = new Gtk.MessageDialog (this, Gtk.DialogFlags.MODAL, Gtk.MessageType.WARNING, Gtk.ButtonsType.NONE,
-                                                               _("Are you sure you want to remove '%s' from your controller.library?"),
-                                                               controller.highlighted_podcast.name.replace("%27", "'"));
-
-
-                msg.add_button (_("No"), Gtk.ResponseType.NO);
-                Gtk.Button delete_button = (Gtk.Button) msg.add_button(_("Yes"), Gtk.ResponseType.YES);
-                delete_button.get_style_context().add_class("destructive-action");
-
-                var image = new Gtk.Image.from_icon_name("dialog-warning", Gtk.IconSize.DIALOG);
-                msg.image = image;
-                msg.image.show_all();
-
-			    msg.response.connect ((response_id) => {
-			        switch (response_id) {
-				        case Gtk.ResponseType.YES:
-					        controller.library.remove_podcast(controller.highlighted_podcast);
-					        controller.highlighted_podcast = null;
-                            switch_visible_page(all_podcasts_view);
-                            populate_views();
-					        break;
-				        case Gtk.ResponseType.NO:
-					        break;
-			        }
-
-			        msg.destroy();
-		        });
-		        msg.show ();
-	        }
+                msg.destroy();
+            });
+            msg.show ();
         }
 
 
@@ -1282,63 +1233,6 @@ namespace Vocal {
 
 
         /*
-		 * Called when the unplayed count changes and the banner count in the iconviews needs updated
-		 */
-        public void on_unplayed_count_changed(int n) {
-            //  foreach(CoverArt a in all_art) {
-            //      if(a.podcast == podcast_view.podcast) {
-            //          a.set_count(n);
-            //          if(n > 0)
-            //              a.show_count();
-            //          else
-            //              a.hide_count();
-            //      }
-            //  }
-            //  if(controller.highlighted_podcast.content_type == MediaType.AUDIO) {
-            //      foreach(CoverArt audio in all_art) {
-            //          if(audio.podcast == podcast_view.podcast) {
-            //              audio.set_count(n);
-            //              if(n > 0)
-            //                  audio.show_count();
-            //              else
-            //                  audio.hide_count();
-            //          }
-            //      }
-            //  } else {
-            //      foreach(CoverArt video in all_art) {
-            //          if(video.podcast == podcast_view.podcast)
-            //          {
-            //              video.set_count(n);
-            //              if(n > 0)
-            //                  video.show_count();
-            //              else
-            //                  video.hide_count();
-            //          }
-            //      }
-            //      }
-        }
-        
-        /*
-         * Called when a user manually sets a new cover art file
-         */
-        public void on_new_cover_art_set(string path) {
-            
-            // Find the cover art in the controller.library and set the new image
-            //  foreach(CoverArt a in all_art) {
-            //      if(a.podcast == podcast_view.podcast) {
-            //          GLib.File cover = GLib.File.new_for_path(path);
-            //          InputStream input_stream = cover.read();
-            //          var pixbuf = a.create_cover_image(input_stream);
-                    
-            //          a.image.pixbuf = pixbuf;
-                    
-            //          // Now copy the image to controller.library cache and set it in the db
-            //          controller.library.set_new_local_album_art(path, a.podcast);
-            //      }
-            //  }
-        }        
-
-        /*
          * Requests the app to be taken fullscreen if the video widget
          * is double-clicked
          */
@@ -1360,27 +1254,21 @@ namespace Vocal {
          * Handles responses from the welcome screen
          */
         private void on_welcome(int index) {
-
-            // Show the store
-            if(index == 0) {
-                switch_visible_page(directory_scrolled);
-
-                // Set the controller.library as the previous widget for return_to_library to work
-                previous_widget = all_podcasts_view;
-            }
-
-            // Add a new feed
-            if (index == 1 ) {
-                add_feed = new AddFeedDialog(this, controller.on_elementary);
-                add_feed.response.connect(on_add_podcast_feed);
-                add_feed.show_all();
-
-            // Import from OPML
-            } else if (index == 2) {
-
-                // The import podcasts method will handle any errors
-                import_podcasts();
-
+            switch(index) {
+                case 0: // Browse podcasts
+                    switch_visible_page(directory_scrolled);
+                    // Set the controller.library as the previous widget for return_to_library to work
+                    previous_widget = all_podcasts_view;
+                    break;
+                case 1: // Add new feed
+                    add_new_podcast();
+                    break;
+                case 2: // Import from OPML
+                    // The import podcasts method will handle any errors
+                    import_podcasts();
+                    break;
+                default:
+                    break;
             } 
         }
 

@@ -127,14 +127,17 @@ namespace Vocal {
                 info ("Top 100 podcasts loaded.");
                 
                 int i = 1;
-                foreach(DirectoryEntry e in entries) {
-                    DirectoryArt a = new DirectoryArt(e.itunesUrl, "%d. %s".printf(i, e.title), e.artist, e.summary, e.artworkUrl170);
-                    a.expand = false;
-                    a.subscribe_button_clicked.connect((url) => {
+                foreach(DirectoryEntry dirEntry in entries) {
+                    DirectoryArt dirArt = new DirectoryArt(dirEntry.itunesUrl, 
+                        "%d. %s".printf(i, dirEntry.title), dirEntry.artist, dirEntry.summary, dirEntry.artworkUrl170);
+
+                    dirArt.expand = false;
+                    dirArt.subscribe_button_clicked.connect((url) => {
                         first_run_continue_button.sensitive = true;
+                        info("dir view");
                         on_new_subscription(url);
                     });
-                    flowbox.add(a);
+                    flowbox.add(dirArt);
                     i++;
                 }
 

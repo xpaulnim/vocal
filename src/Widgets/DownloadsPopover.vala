@@ -26,10 +26,9 @@ using Granite;
 namespace Vocal {
     public class DownloadsPopover : Gtk.Popover {
 
-
         public signal void 	all_downloads_complete();		// signal that gets fired when all downloads are finished
 
-        private Gtk.ListBox listbox;						// displays the download details boxes
+        private Gtk.ListBox listbox;
         private Gtk.Label 	downloads_complete;				// a label that gets shown when all downloads are finished
 
         public ArrayList<DownloadDetailBox> downloads;		// stores the download detail boxes

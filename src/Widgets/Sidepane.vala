@@ -403,7 +403,7 @@ namespace Vocal {
                         right_click_menu.add(mark_unplayed_menuitem);
                     }
 
-                    if(podcast.episodes[current_episode_index].current_download_status == DownloadStatus.DOWNLOADED) {
+                    if(podcast.episodes[current_episode_index].download_status == DownloadStatus.DOWNLOADED) {
 
                         var delete_menuitem = new Gtk.MenuItem.with_label(_("Delete Local File"));
 

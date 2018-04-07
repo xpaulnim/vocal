@@ -22,25 +22,27 @@ namespace Vocal {
 
 	public class Shownotes : Gtk.ScrolledWindow {
 
+		public signal void on_queue_episode(Episode episode);
+		public signal void play_episode(Episode episode);
 		public signal void on_download_episode(Episode episode);
 		public signal void marked_as_played(Episode episode);
 		public signal void marked_as_unplayed(Episode episode);
-		public signal void copy_shareable_link();
-		public signal void send_tweet();
-		public signal void copy_direct_link();
+		public signal void copy_shareable_link(Episode episode);
+		public signal void send_tweet(Episode episode);
+		public signal void copy_direct_link(Episode episode);
 
-		public Gtk.Button play_button;
-		public Gtk.Button queue_button;
-		public Gtk.Button download_button;
-		public Gtk.Button share_button;
+		private Gtk.Button play_button;
+		private Gtk.Button queue_button;
+		private Gtk.Button download_button;
+		private Gtk.Button share_button;
 		private Gtk.Button mark_as_played_button;
 		private Gtk.Button mark_as_new_button;
-		public Gtk.Button delete_button;
-		public Episode episode = null;
+		private Gtk.Button delete_button;
+		private Episode episode = null;
 
-		public Gtk.MenuItem shareable_link;
-		public Gtk.MenuItem tweet;
-		public Gtk.MenuItem link_to_file;
+		private Gtk.MenuItem shareable_link;
+		private Gtk.MenuItem tweet;
+		private Gtk.MenuItem link_to_file;
 
 		private Gtk.Label title_label;
 		private Gtk.Label date_label;
@@ -96,9 +98,15 @@ namespace Vocal {
 				tweet = new Gtk.MenuItem.with_label(_("Send a Tweet…"));
 				link_to_file = new Gtk.MenuItem.with_label(_("Copy the direct episode link"));
 
-				shareable_link.activate.connect(() => { copy_shareable_link(); });
-				tweet.activate.connect(() => { send_tweet(); });
-				link_to_file.activate.connect(() => { copy_direct_link(); });
+				shareable_link.activate.connect(() => { 
+					copy_shareable_link(this.episode); 
+				});
+				tweet.activate.connect(() => { 
+					send_tweet(this.episode); 
+				});
+				link_to_file.activate.connect(() => {
+					copy_direct_link(this.episode); 
+				});
 
 				share_menu.add(shareable_link);
 				share_menu.add(tweet);
@@ -132,9 +140,15 @@ namespace Vocal {
 			title_label.set_property("xalign", 0);
 
 			play_button = new Gtk.Button.with_label("Play this episode");
+			play_button.clicked.connect(() => {
+				play_episode(this.episode);
+			});
 			queue_button = new Gtk.Button.from_icon_name("list-add-symbolic", Gtk.IconSize.SMALL_TOOLBAR);
 			queue_button.has_tooltip = true;
 			queue_button.tooltip_text = _("Add this episode to the up next list");
+			queue_button.clicked.connect(() => {
+				on_queue_episode(this.episode);
+			});
 
 			var button_box = new Gtk.Box(Gtk.Orientation.HORIZONTAL, 5);
 			button_box.pack_start(play_button, false, false, 0);
@@ -159,17 +173,19 @@ namespace Vocal {
 		}
 
 		public void set_episode(Episode episode) {
+			if(this.episode == episode) {
+				return;
+			}
+
 			this.episode = episode;
 			set_title(episode.title);
 			set_html(episode.description != "(null)" ? Utils.html_to_markup(episode.description) : _("No show notes available."));
 			set_date(episode.datetime_released);
 
-			// Check to see if the episode has been downloaded or not
-			if(episode.current_download_status == DownloadStatus.DOWNLOADED) {
-				hide_download_button();
-			} else {
-				show_download_button();
-			}
+			update_download_button_state();
+			episode.download_status_changed.connect(() => {
+				update_download_button_state();
+			});
 
 			update_played_status();
 			episode.played_status_updated.connect(() => {
@@ -183,6 +199,14 @@ namespace Vocal {
 			shownotes_label.label = html;
 			shownotes_label.use_markup = true;
 			show_all();
+		}
+
+		private void update_download_button_state() {
+			if(episode.download_status == DownloadStatus.DOWNLOADED) {
+				hide_download_button();
+			} else {
+				show_download_button();
+			}
 		}
 
 		private void show_download_button() {
@@ -205,9 +229,9 @@ namespace Vocal {
 
 		private void update_played_status() {
 			if(episode.status == EpisodeStatus.PLAYED) {
-				show_mark_as_played_button();
-			} else {
 				show_mark_as_new_button();
+			} else {
+				show_mark_as_played_button();
 			}
 		}
 

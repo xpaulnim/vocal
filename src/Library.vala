@@ -33,6 +33,8 @@ namespace Vocal {
 
     public class Library {
 
+        public signal void on_unsubscribed_from_podcast();
+        
 		// Fired when a download completes
         public signal void	download_finished(Episode episode);
 
@@ -105,10 +107,6 @@ namespace Vocal {
             return null;
         }
 
-
-        /*
-         * Adds podcasts to the library from the provided OPML file path
-         */
         public async bool add_from_OPML(string path) {
 
             bool successful = true;
@@ -147,11 +145,6 @@ namespace Vocal {
             return successful;
         }
 
-
-
-        /*
-         * Adds a new podcast to the library
-         */
         public bool add_podcast(Podcast podcast) throws VocalLibraryError {
             // Set all but the most recent episode as played on initial add to library
             if(podcast.episode_count() > 0) {
@@ -161,21 +154,16 @@ namespace Vocal {
             }
 
             string podcast_path = local_library_path + "/%s".printf(podcast.name.replace("%27", "'").replace("%", "_"));
-
             // Create a directory for downloads and artwork caching in the local library
             GLib.DirUtils.create_with_parents(podcast_path, 0775);
 
-
             //  Locally cache the album art if necessary
             try {
-
                 // Don't use the default coverart_path getter, we want to make sure we are using the remote URI
                 GLib.File remote_art = GLib.File.new_for_uri(podcast.remote_art_uri);
 
                 // Set the path of the new file and create another object for the local file
-
-                string art_path = podcast_path + """/""" + remote_art.get_basename().replace("%", "_");
-
+                string art_path = podcast_path + "/" + remote_art.get_basename().replace("%", "_");
                 GLib.File local_art = GLib.File.new_for_path(art_path);
 
                 // If the local album art doesn't exist
@@ -189,7 +177,7 @@ namespace Vocal {
                 }
 
             } catch(Error e) {
-                stderr.puts("Unable to save a local copy of the album art.\n");
+                error("Unable to save a local copy of the album art.\n");
             }
 
 
@@ -237,13 +225,7 @@ namespace Vocal {
                 episode_description = episode.description.replace("'", "%27");
 
                 string played_text = episode.status.to_string();
-
-    	        string download_text;
-	            if(episode.current_download_status == DownloadStatus.DOWNLOADED) {
-	                download_text = "downloaded";
-	            } else {
-	                download_text = "not_downloaded";
-	            }
+                string download_text = episode.download_status.to_string();
 
                 query = """INSERT OR REPLACE INTO Episode (title, parent_podcast_name, uri, local_uri, description, release_date, download_status, play_status) VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s');"""
                     .printf(title, parent_podcast_name, uri, episode.local_uri, episode_description, episode.date_released, download_text, played_text);
@@ -284,16 +266,14 @@ namespace Vocal {
 
         }
 
-
         public async bool async_add_podcast_from_file(string path) {
-
             bool successful = true;
 
             SourceFunc callback = async_add_podcast_from_file.callback;
 
             ThreadFunc<void*> run = () => {
 
-                info("Adding podcast from file: %s".printf(path));
+                info("Adding podcast from file: %s", path);
                 parser = new FeedParser();
 
                 try {
@@ -305,9 +285,9 @@ namespace Vocal {
                         add_podcast(new_podcast);
                     }
                 } catch (Error e) {
+                    error(e.message);
                     successful = false;
                 }
-
 
                 Idle.add((owned) callback);
                 return null;
@@ -318,7 +298,6 @@ namespace Vocal {
             yield;
 
             return successful;
-
         }
 
         /*
@@ -336,7 +315,7 @@ namespace Vocal {
                     foreach(Episode e in p.episodes) {
 
                         // If e is downloaded, played, and more than a week old
-                        if(e.current_download_status == DownloadStatus.DOWNLOADED &&
+                        if(e.download_status == DownloadStatus.DOWNLOADED &&
                             e.status == EpisodeStatus.PLAYED && e.datetime_released.compare(week_ago) == -1) {
 
                             // Delete the episode. Skip checking for an existing file, the delete_episode method will do that automatically
@@ -413,12 +392,7 @@ namespace Vocal {
 
             // Clear the fields in the episode
             string title = episode.title.replace("'", "%27");
-            episode.current_download_status = DownloadStatus.NOT_DOWNLOADED;
-            episode.local_uri = null;
-
-            // Write the episode to database
             string query = """UPDATE Episode SET download_status = 'not_downloaded', local_uri = NULL WHERE title = '%s'""".printf(title);
-
 
             string errmsg;
             int ec = db.exec (query, null, out errmsg);
@@ -426,6 +400,9 @@ namespace Vocal {
             if (ec != Sqlite.OK) {
                 error(errmsg);
             }
+
+            episode.download_status = DownloadStatus.NOT_DOWNLOADED;
+            episode.local_uri = null;
 
             recount_unplayed();
         }
@@ -435,11 +412,13 @@ namespace Vocal {
          * for displaying download progress information later
          */
         public DownloadDetailBox? download_episode(Episode episode) {
-            //  if(episode.current_download_status == DownloadStatus.DOWNLOADED) {
-            //      warning("Error. Episode %s is already downloaded.\n", episode.title);
-            //      return null;
-            //  }
+            if(episode.download_status == DownloadStatus.DOWNLOADED) {
+                info("Error. Episode %s is already downloaded. Will not download", episode.title);
+                return null;
+            }
 
+            //  download_starting();
+            
             string library_location;
 
             if(settings.library_location != null) {
@@ -672,9 +651,6 @@ namespace Vocal {
             }
         }
 
-        /*
-         * Marks an episode as downloaded in the database
-         */
         public void mark_episode_as_downloaded(Episode episode) {
             string query, errmsg;
             int ec;
@@ -685,21 +661,23 @@ namespace Vocal {
 
             query = """UPDATE Episode SET download_status = 'downloaded', local_uri = '%s' WHERE title = '%s'""".printf(uri,title);
 
-
             ec = db.exec (query, null, out errmsg);
 
             if (ec != Sqlite.OK) {
-                stderr.printf ("Error: %s\n", errmsg);
+                error("Error: %s\n", errmsg);
             }
+            
+            episode.download_status = DownloadStatus.DOWNLOADED;
         }
 
         /*
          * Marks an episode as played in the database
          */
         public void mark_episode_as_played(Episode episode) {
-
-            if(episode == null)
-                error("Episode null!");
+            if(episode.status == EpisodeStatus.PLAYED){
+                info("Episode is already played");
+                return;
+            }
 
             episode.status = EpisodeStatus.PLAYED;
             string query, errmsg;
@@ -724,6 +702,10 @@ namespace Vocal {
         }
 
         public void mark_episode_as_unplayed(Episode episode) {
+            if(episode.status == EpisodeStatus.UNPLAYED) {
+                info("Episode already marked as unplayed");
+                return;
+            }
             episode.status = EpisodeStatus.UNPLAYED;
 
             string query, errmsg;
@@ -743,7 +725,6 @@ namespace Vocal {
         }
 
         public void on_successful_download(string episode_title, string parent_podcast_name) {
-
             batch_download_count--;
             try {
                 recount_unplayed();
@@ -787,7 +768,6 @@ namespace Vocal {
 
                 // If the episode was found (and it should have been), mark as downloaded and write to database
                 if(downloaded_episode != null) {
-                    downloaded_episode.current_download_status = DownloadStatus.DOWNLOADED;
                     mark_episode_as_downloaded(downloaded_episode);
                 }
 
@@ -916,20 +896,10 @@ namespace Vocal {
                             current_ep.set_datetime_from_pubdate();
                         }
                         else if(col_name == "download_status") {
-                            if(val == "downloaded") {
-                                current_ep.current_download_status = DownloadStatus.DOWNLOADED;
+                            current_ep.download_status = DownloadStatus.from_string(val);
                             }
-                            else {
-                                current_ep.current_download_status = DownloadStatus.NOT_DOWNLOADED;
-                            }
-                        }
                         else if (col_name == "play_status") {
-                            if(val == "played") {
-                                current_ep.status = EpisodeStatus.PLAYED;
-                            }  else {
-                                current_ep.status = EpisodeStatus.UNPLAYED;
-                            }
-
+                            current_ep.status = EpisodeStatus.from_string(val);
                         }
                         else if (col_name == "latest_position") {
                             double position = 0;
@@ -1014,7 +984,7 @@ namespace Vocal {
 
             Sqlite.Statement stmt;
 
-            string prepared_query_str = "SELECT * FROM Episode WHERE title LIKE ? ORDER BY title";
+            string prepared_query_str = "SELECT * FROM Episode WHERE title LIKE '%'||?||'%' ORDER BY title";
             int ec = db.prepare_v2 (prepared_query_str, prepared_query_str.length, out stmt);
             ec = stmt.bind_text(1, term, -1, null);
             if (ec != Sqlite.OK) {
@@ -1052,20 +1022,10 @@ namespace Vocal {
                         current_ep.set_datetime_from_pubdate();
                     }
                     else if(col_name == "download_status") {
-                        if(val == "downloaded") {
-                            current_ep.current_download_status = DownloadStatus.DOWNLOADED;
-                        }
-                        else {
-                            current_ep.current_download_status = DownloadStatus.NOT_DOWNLOADED;
-                        }
+                        current_ep.download_status = DownloadStatus.from_string(val);
                     }
                     else if (col_name == "play_status") {
-                        if(val == "played") {
-                            current_ep.status = EpisodeStatus.PLAYED;
-                        }  else {
-                            current_ep.status = EpisodeStatus.UNPLAYED;
-                        }
-
+                        current_ep.status = EpisodeStatus.from_string(val);
                     }
                     else if (col_name == "latest_position") {
                         double position = 0;
@@ -1080,33 +1040,23 @@ namespace Vocal {
 
                 //Add the new episode
                 matches.add(current_ep);
-
             }
 
             stmt.reset();
             return matches;
         }
 
-
-        /*
-         * Removes a podcast from the library
-         */
-        public void remove_podcast(Podcast podcast) {
-
-            string query, errmsg;
-            int ec;
-
+        public void unsubscribe_from_podcast(Podcast podcast) {
             // Delete the podcast's episodes from the database
-	        query = "DELETE FROM Episode WHERE parent_podcast_name = '%s';".printf(podcast.name.replace("'", "%27"));
+            string query = "DELETE FROM Episode WHERE parent_podcast_name = '%s';".printf(podcast.name.replace("'", "%27"));
 
-
-	        ec = db.exec (query, null, out errmsg);
+            string errmsg;
+            int ec = db.exec (query, null, out errmsg);
 	        if (ec != Sqlite.OK) {
 		        stderr.printf ("Error: %d: %s\n", db.errcode (), db.errmsg ());
 		        return;
 	        }
 
-            // Delete the podcast from the database
             query = "DELETE FROM Podcast WHERE name = '%s';".printf(podcast.name.replace("'", "%27"));
             ec = db.exec (query, null, out errmsg);
 
@@ -1116,6 +1066,8 @@ namespace Vocal {
 
             // Remove the local object as well
             podcasts.remove(podcast);
+            
+            on_unsubscribed_from_podcast();
         }
 
         public Gee.ArrayList<Podcast>? search_by_term(string term) {
@@ -1125,7 +1077,6 @@ namespace Vocal {
             Sqlite.Statement stmt;
 
             Gee.ArrayList<Podcast> search_pods = new Gee.ArrayList<Podcast>();
-
 
             string prepared_query_str = "SELECT * FROM Podcast WHERE name='%s' ORDER BY name".printf(term);
             int ec = db.prepare_v2 (prepared_query_str, prepared_query_str.length, out stmt);
@@ -1177,10 +1128,6 @@ namespace Vocal {
 
         }
 
-        /*
-         * Sets the latest playback position in the database for a provided episode
-         *
-         */
         public void set_episode_playback_position(Episode episode) {
             string query, errmsg;
             int ec;
@@ -1217,18 +1164,16 @@ namespace Vocal {
          */
         public void set_new_badge() {
 #if HAVE_LIBUNITY
-            //  launcher.count = new_episode_count;
-            //  if(new_episode_count > 0) {
-            //      launcher.count_visible = true;
-            //  } else {
-            //      launcher.count_visible = false;
-            //  }
+            /*  launcher.count = new_episode_count;
+            if(new_episode_count > 0) {
+                launcher.count_visible = true;
+            } else {
+                launcher.count_visible = false;
+            }  */
 #endif
         }
 
         public void set_new_local_album_art(string path_to_local_file, Podcast p) {
-
-            // Copy the file
             GLib.File current_file = GLib.File.new_for_path(path_to_local_file);
 
             InputStream input_stream = current_file.read();
@@ -1245,14 +1190,11 @@ namespace Vocal {
             query = """UPDATE Podcast SET album_art_local_uri = '%s' WHERE name = '%s'""".printf(local_file.get_uri(),p.name);
 
             ec = db.exec (query, null, out errmsg);
-
             if (ec != Sqlite.OK) {
-                stderr.printf ("Error: %s\n", errmsg);
+                error("Error: %s\n", errmsg);
             }
 
-            // Set the new file location for the podcast object
             p.local_art_uri = local_file.get_uri();
-
         }
 
         /*
@@ -1298,7 +1240,6 @@ namespace Vocal {
 			        album_art_local_uri TEXT,
 			        description         TEXT                    NOT NULL,
 			        content_type        TEXT
-
 		            );
 
 		            CREATE TABLE Episode (
@@ -1334,37 +1275,21 @@ namespace Vocal {
             int ec;
             string title, parent_podcast_name, uri, episode_description;
             title = episode.title.replace("'", "%27");
-
             parent_podcast_name = episode.parent.name.replace("'", "%27");
-
             uri = episode.uri;
             episode_description = episode.description.replace("'", "%27");
 
 
-            string played_text;
-
-            if(episode.status == EpisodeStatus.PLAYED) {
-	            played_text = "played";
-	        }
-	        else {
-	            played_text = "unplayed";
-	        }
-
-	        string download_text;
-	        if(episode.current_download_status == DownloadStatus.DOWNLOADED) {
-	            download_text = "downloaded";
-	        } else {
-	            download_text = "not_downloaded";
-	        }
+            string played_text = episode.status.to_string();
+            string download_text = episode.download_status.to_string();
 
             query = """INSERT OR REPLACE INTO Episode (title, parent_podcast_name, uri, local_uri, description, release_date, download_status, play_status) VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s');"""
                 .printf(title, parent_podcast_name, uri, episode.local_uri, episode_description, episode.date_released, download_text, played_text);
 
-
             ec = db.exec (query, null, out errmsg);
 
             if (ec != Sqlite.OK) {
-                stderr.printf ("Error: %s\n", errmsg);
+                error ("Error: %s\n", errmsg);
             }
         }
     }

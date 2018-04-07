@@ -23,10 +23,11 @@ namespace Vocal {
 
         public iTunesProvider() {}
 
-        /*
-         * Finds the public RSS feed address from any given iTunes store URL
-         */
         public string? get_rss_from_itunes_url(string itunes_url, out string? name = null) {
+            if(!itunes_url.contains("itunes.apple.com")) {
+                info("%s is not itunes url", itunes_url);
+                return null;
+            } 
 
             string rss = "";
 
@@ -49,7 +50,7 @@ namespace Vocal {
                 var root_object = parser.get_root ().get_object ();
 
                 if(root_object == null) {
-                    stdout.puts("Error. Root object was null.");
+                    error("Error. Root object was null.");
                     return null;
                 }
 
@@ -60,22 +61,19 @@ namespace Vocal {
                     rss = obj.get_string_member("feedUrl");
                     name = obj.get_string_member("trackName");
                 }
-                
-
             } catch (Error e) {
-                warning ("An error occurred while discovering the real RSS feed address");
+                warning ("An error occurred while discovering the real RSS feed address %s", e.message);
             }
 
-            return rss;
+            info("Original iTunes URL: %s, Vocal found matching RSS address: %s", itunes_url, rss);
 
+            return rss;
         }
 
         /*
          * Finds the top n podcasts (100 by default) and returns it in an ArrayList
          */
         public GLib.List<DirectoryEntry>? get_top_podcasts(int? limit = 100) {
-        
-
             var settings = VocalSettings.get_default_instance();
 
             var uri =  "https://itunes.apple.com/%s/rss/toppodcasts/limit=%d/json".printf(settings.itunes_store_country, limit);

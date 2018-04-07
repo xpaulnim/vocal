@@ -41,7 +41,8 @@ namespace Vocal {
 
         private Gee.ArrayList<Widget> local_episodes_widgets;
         private Gee.ArrayList<Widget> local_podcasts_widgets;
-        private Gee.ArrayList<Widget> cloud_results_widgets;
+        //  private Gee.ArrayList<Widget> cloud_results_widgets;
+        private GLib.ListStore cloud_results_widgets = new GLib.ListStore(typeof(DirectoryEntry));
 
         private Gtk.Box content_box;
         private Gtk.Spinner spinner;
@@ -133,6 +134,7 @@ namespace Vocal {
             local_episodes_listbox = new Gtk.ListBox();
             local_podcasts_listbox = new Gtk.ListBox();
             cloud_results_flowbox = new Gtk.FlowBox();
+            cloud_results_flowbox.bind_model(cloud_results_widgets, create_directory_art);
 
             local_episodes_listbox.activate_on_single_click = true;
             local_podcasts_listbox.activate_on_single_click = true;
@@ -145,7 +147,7 @@ namespace Vocal {
 
             local_episodes_widgets = new Gee.ArrayList<Widget>();
             local_podcasts_widgets = new Gee.ArrayList<Widget>();
-            cloud_results_widgets = new Gee.ArrayList<Widget>();
+            //  cloud_results_widgets = new Gee.ArrayList<Widget>();
             
             no_local_episodes_label = new Gtk.Label (_("No matching episodes found in your library."));
             no_local_podcasts_label = new Gtk.Label (_("No matching podcasts found in your library."));
@@ -194,7 +196,7 @@ namespace Vocal {
         private void reset () {
             local_episodes_widgets.clear ();
             local_podcasts_widgets.clear ();
-            cloud_results_widgets.clear ();
+            cloud_results_widgets.remove_all ();
 
             foreach (Gtk.Widget a in local_episodes_listbox.get_children ()) {
                 local_episodes_listbox.remove (a);
@@ -202,14 +204,22 @@ namespace Vocal {
             foreach (Gtk.Widget b in local_podcasts_listbox.get_children ()) {
                 local_podcasts_listbox.remove (b);
             }
-            foreach (Gtk.Widget c in cloud_results_flowbox.get_children ()) {
-                cloud_results_flowbox.remove (c);
-            }
             local_podcasts_revealer.reveal_child = false;
             local_episodes_revealer.reveal_child = false;
             cloud_results_revealer.reveal_child = false;
             show_all ();
+        }
 
+        private Widget create_directory_art(Object item) { 
+            var dirEntry = item as DirectoryEntry;
+
+            DirectoryArt dirArt = new DirectoryArt(dirEntry.itunesUrl, dirEntry.title, dirEntry.artist, dirEntry.summary, dirEntry.artworkUrl600);
+            dirArt.expand = false;
+            dirArt.subscribe_button_clicked.connect((url) => {
+                on_new_subscription(url);
+            });
+
+            return dirArt;
         }
 
         /*
@@ -223,12 +233,7 @@ namespace Vocal {
             ThreadFunc<void*> run = () => {
                 Gee.ArrayList<DirectoryEntry> c_matches = itunes.search_by_term(search_term);
                 foreach(DirectoryEntry c in c_matches) {
-                    DirectoryArt a = new DirectoryArt(c.itunesUrl, c.title, c.artist, c.summary, c.artworkUrl600);
-                    a.subscribe_button_clicked.connect((url) => {
-                        on_new_subscription(url);
-                    });
-                    cloud_results_widgets.add(a);
-
+                    cloud_results_widgets.append(c);
                 }
 
                 Idle.add((owned) callback);
@@ -237,19 +242,14 @@ namespace Vocal {
             Thread.create<void*>(run, false);
 
             yield;
-
-            foreach(Widget w in cloud_results_widgets) {
-                cloud_results_flowbox.add(w);
-            }
             
             hide_spinner ();
             show_all();
-            if (cloud_results_widgets.size < 1) {
+            if (cloud_results_widgets.get_n_items() < 1) {
                 cloud_results_revealer.reveal_child = false;
             } else {
                 cloud_results_revealer.reveal_child = true;
             }
-
         }
 
         /*
