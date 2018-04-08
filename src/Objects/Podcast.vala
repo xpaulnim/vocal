@@ -77,7 +77,12 @@ namespace Vocal {
             episodes = new ArrayList<Episode>();
             content_type = MediaType.UNKNOWN;
         }
-        
+
+        public Podcast.with_name(string name) {
+            this();
+            this.name = name;
+        }
+            
         public void add_episodes(Gee.ArrayList<Episode> episodes) {
             foreach (var episode in episodes) {
                 this.episodes.add(episode);
@@ -85,7 +90,7 @@ namespace Vocal {
                     recount_unplayed_episodes();
                 });
             }
-            
+        
             recount_unplayed_episodes();
         }
         
@@ -148,7 +153,7 @@ namespace Vocal {
         }
         
         public static MediaType from_string (string str) {
-            if (str == "played") {
+            if (str == "audio") {
                 return MediaType.AUDIO;
             } else if (str == "video") {
                 return MediaType.VIDEO;

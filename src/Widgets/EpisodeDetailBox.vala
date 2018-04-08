@@ -37,14 +37,17 @@ namespace Vocal {
         private  Gtk.Button  download_button;
         private  Gtk.Button  streaming_button;
         private Gtk.Label   description_label;
+        private bool new_episodes_view;
         
 		/*
         * Creates a new episode detail box given an episode, and index, a box_index (corresponding
         * index number for this box in the list in the side pane), and whether Vocal is running
         * in elementary (determines the icons).
         */
-        public EpisodeDetailBox(Episode episode, bool on_elementary) {
+        public EpisodeDetailBox(Episode episode, bool on_elementary,  bool? new_episodes_view = false) {
             this.episode = episode;
+            this.new_episodes_view = new_episodes_view;
+
             orientation = Gtk.Orientation.VERTICAL;
             set_size_request(100, 25);
             var top_box = new Gtk.Box(Gtk.Orientation.HORIZONTAL, 0);
@@ -93,6 +96,17 @@ namespace Vocal {
                 update_played_status();
             });
             
+            if (new_episodes_view) {
+			    var file = GLib.File.new_for_uri(episode.parent.coverart_uri);
+			    var icon = new GLib.FileIcon(file);
+			    var image = new Gtk.Image.from_gicon(icon, Gtk.IconSize.DIALOG);
+			    image.margin = 12;
+			    image.margin_top = 0;
+			    image.margin_bottom = 0;
+			    image.pixel_size = 75;
+			    unplayed_box.pack_start (image, false, false, 0);
+            }
+
             // Set up the streaming button
             streaming_button = new Gtk.Button.from_icon_name(streaming_image, Gtk.IconSize.BUTTON);
             streaming_button.expand = false;
@@ -134,6 +148,16 @@ namespace Vocal {
             label_box.expand = false;
             
             if(episode.datetime_released != null && episode.date_released != "(null)") {
+            
+            if (new_episodes_view) {
+                var name_label = new Gtk.Label (episode.parent.name);
+                name_label.halign = Gtk.Align.START;
+                name_label.justify = Gtk.Justification.LEFT;
+                name_label.wrap = true;
+                label_box.pack_start (name_label, true, true, 0);
+            }
+            
+            if(episode.datetime_released != null) {
                 release_label = new Gtk.Label(episode.datetime_released.format("%x"));
             } else {
                 release_label = new Gtk.Label(episode.date_released);
@@ -160,12 +184,16 @@ namespace Vocal {
             description_label.max_width_chars = 10;
             description_label.single_line_mode = true;
             description_label.margin = 12;
-            description_label.margin_left = 25;
+            if (new_episodes_view == false) {
+                description_label.margin_left = 25;
+            }
+
             description_label.set("xalign", 0);
             
             pack_end(description_label);
             
             this.get_style_context().add_class("episode_detail_box");
+            }
         }
         
         /*
@@ -215,7 +243,7 @@ namespace Vocal {
         }
         
         public void update_played_status() {
-            if(episode.status == EpisodeStatus.UNPLAYED) {
+            if(episode.status == EpisodeStatus.UNPLAYED && new_episodes_view == false) {
                 mark_as_unplayed();
             } else {
                 mark_as_played();

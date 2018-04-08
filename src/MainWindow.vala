@@ -37,6 +37,7 @@ namespace Vocal {
         public Welcome welcome;
         private DirectoryView directory;
         public SearchResultsView search_results_view;
+        public NewEpisodesView new_episodes_view;
         private Gtk.Stack notebook;
         public PodcastView podcast_view;
         private Gtk.Box import_message_box;
@@ -59,6 +60,7 @@ namespace Vocal {
         public AllPodcastsView all_podcasts_view;
         public Gtk.ScrolledWindow directory_scrolled;
         public Gtk.ScrolledWindow search_results_scrolled;
+        public Gtk.ScrolledWindow new_episodes_scrolled;
 
         /* Video playback */
 
@@ -278,10 +280,24 @@ namespace Vocal {
                     _("If you have exported feeds from another podcast manager, import them here."));
             welcome.activated.connect(on_welcome);
             
+            info ("Creating new episodes view.");
+            new_episodes_view = new NewEpisodesView (controller);
+            new_episodes_view.go_back.connect (() => {
+                switch_visible_page(all_podcasts_view);
+            });
+            new_episodes_view.play_episode_requested.connect((episode) => {
+                play_different_track(episode);
+            });
+            new_episodes_view.add_all_new_to_queue.connect ((episodes) => {
+                controller.library.enqueue_episodes(episodes);
+            });
+                        
             info ("Creating scrolled containers and album art views.");
 
             // Set up scrolled windows so that content will scoll instead of causing the window to expand
             directory_scrolled = new Gtk.ScrolledWindow (null, null);
+            new_episodes_scrolled = new Gtk.ScrolledWindow (null, null);
+            new_episodes_scrolled.add (new_episodes_view);
             search_results_scrolled = new Gtk.ScrolledWindow(null, null);
             search_results_box = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
             search_results_scrolled.add(search_results_box);
@@ -296,7 +312,6 @@ namespace Vocal {
             // Set up all the signals for the podcast view
             podcast_view = new PodcastView (controller);
             podcast_view.play_episode_requested.connect(play_different_track);
-            
             podcast_view.download_episode_requested.connect(download_episode);
             podcast_view.download_all_requested.connect((episodes) => {
                 foreach (var episode in episodes) {
@@ -305,7 +320,7 @@ namespace Vocal {
             });
             
             podcast_view.enqueue_episode.connect(controller.library.enqueue_episode);
-
+            
             podcast_view.mark_episode_as_played_requested.connect(controller.library.mark_episode_as_played);
             podcast_view.mark_multiple_episodes_as_played.connect(controller.library.mark_episodes_as_played);
             
@@ -345,6 +360,7 @@ namespace Vocal {
             notebook.add_titled(import_message_box, "import", _("Importing"));
             notebook.add_titled(all_podcasts_view, "all", _("All Podcasts"));
             notebook.add_titled(podcast_view, "podcast_view", _("Details"));
+            notebook.add_titled (new_episodes_scrolled, "new_episodes", _("New Episodes"));
             notebook.add_titled(video_widget, "video_player", _("Video"));
             
             bool show_complete_button = controller.first_run || controller.library_empty;
@@ -396,6 +412,10 @@ namespace Vocal {
                 settings_dialog = new SettingsDialog (controller.settings, this);
                 settings_dialog.show_name_label_toggled.connect (on_show_name_label_toggled);
                 settings_dialog.show_all ();
+            });
+            
+            toolbar.new_episodes_button.clicked.connect (() => {
+                switch_visible_page (new_episodes_scrolled);
             });
 
             toolbar.refresh_selected.connect (controller.on_update_request);
@@ -480,12 +500,11 @@ namespace Vocal {
             }
             info("Window initialization complete.");
         }
-
+        
         /*
          * Populates the three views (all, audio, video) from the contents of the controller.library
          */
         public async void populate_views() {
-
             SourceFunc callback = populate_views.callback;
 
             ThreadFunc<void*> run = () => {
@@ -544,14 +563,12 @@ namespace Vocal {
     	                controller.library.refill_library();
     	            }
 
-    	            // Clear flags since we have an established controller.library at this point
-    	            controller.newly_launched = false;
-    	            controller.first_run = false;
-    	            controller.library_empty = false;
-
 	                foreach(Podcast podcast in controller.library.podcasts) {
                         all_podcasts_view.add_podcast(podcast);
 	                }
+
+                    info("Adding coverart to view.");
+                    new_episodes_view.populate_episodes_list ();
 
     	            controller.currently_repopulating = false;
             	}
@@ -560,14 +577,33 @@ namespace Vocal {
                 return null;
             };
 
-            Thread.create<void*>(run, false);
-
-            yield;
+	        controller.currently_repopulating = false;
 
             // If the app is supposed to open hidden, don't present the window. Instead, hide it
             if(!controller.open_hidden && !controller.is_closing) {
                 show_all();
+                
             }
+        }
+
+        /*
+         * Populates the three views (all, audio, video) from the contents of the controller.library
+         */
+        public async void async_populate_views() {
+            SourceFunc callback = async_populate_views.callback;
+
+            ThreadFunc<void*> run = () => {
+
+            	populate_views ();
+
+                Idle.add((owned) callback);
+                return null;
+            };
+
+
+            Thread.create<void*>(run, false);
+
+            yield;
         }
 
 
@@ -594,8 +630,15 @@ namespace Vocal {
         /*
          * Switches the current track and requests the newly selected track starts playing
          */
-        private void play_different_track (Episode episode) {
-            controller.current_episode = episode;
+        private void play_different_track (Episode? episode) {
+
+            // Get the episode
+            //  if (episode == null) {
+            //      int index = podcast_view.current_episode_index;
+            //      controller.current_episode = podcast.podcast.episodes[index];
+            //  } else {
+                controller.current_episode = episode;
+            //  }
 
             controller.player.pause();
             controller.play();
@@ -743,7 +786,7 @@ namespace Vocal {
                             toolbar.show_shownotes_button();
                             toolbar.show_playlist_button();
 
-                            populate_views();
+                            async_populate_views();
 
                             if(current_widget == import_message_box) {
                                 switch_visible_page(all_podcasts_view);
@@ -859,6 +902,10 @@ namespace Vocal {
             else if (widget == welcome) {
                 notebook.set_visible_child(welcome);
                 current_widget = welcome;
+            }
+            else if (widget == new_episodes_scrolled) {
+                notebook.set_visible_child (new_episodes_scrolled);
+                current_widget = new_episodes_view;
             }
             else {
                 info("Attempted to switch to a notebook page that didn't exist. This is likely a bug and might cause issues.");
@@ -1113,6 +1160,9 @@ namespace Vocal {
                 switch (response_id) {
                     case Gtk.ResponseType.YES:
                         controller.library.unsubscribe_from_podcast(podcast);
+                        controller.highlighted_podcast = null;
+                        switch_visible_page(all_podcasts_view);
+                        async_populate_views();
                         break;
                     case Gtk.ResponseType.NO:
                         break;
@@ -1214,6 +1264,8 @@ namespace Vocal {
             controller.library.set_episode_playback_position(controller.player.current_episode);
 
             controller.playback_status_changed("Stopped");
+            
+            new_episodes_view.remove_episode_from_list (controller.player.current_episode);
 
             controller.current_episode = controller.library.get_next_episode_in_queue();
 
