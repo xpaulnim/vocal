@@ -808,7 +808,6 @@ namespace Vocal {
          * Refills the local library from the contents stored in the database
          */
         public void refill_library() {
-
             podcasts.clear();
             prepare_database();
 
@@ -817,102 +816,38 @@ namespace Vocal {
 	        string prepared_query_str = "SELECT * FROM Podcast ORDER BY name";
 	        int ec = db.prepare_v2 (prepared_query_str, prepared_query_str.length, out stmt);
 	        if (ec != Sqlite.OK) {
-		        warning("%d: %s\n".printf(db.errcode (), db.errmsg ()));
+		        warning("%d: %s\n", db.errcode (), db.errmsg ());
 		        return;
 	        }
 
 	        // Use the prepared statement:
 
-	        int cols = stmt.column_count ();
 	        while (stmt.step () == Sqlite.ROW) {
-
-	            Podcast current = new Podcast();
-		        for (int i = 0; i < cols; i++) {
-			        string col_name = stmt.column_name (i) ?? "<none>";
-			        string val = stmt.column_text (i) ?? "<none>";
-
-                    if(col_name == "name") {
-                        current.name = val;
-                    }
-                    else if(col_name == "feed_uri") {
-                        current.feed_uri = val;
-                    }
-                    else if (col_name == "album_art_url") {
-                        current.remote_art_uri = val;
-                    }
-                    else if (col_name == "album_art_local_uri") {
-                        current.local_art_uri = val;
-                    }
-                    else if(col_name == "description") {
-                        current.description = val;
-                    }
-                    else if (col_name == "content_type") {
-                        current.content_type = MediaType.from_string(val);
-                    }
-		        }
-
+	            Podcast current = podcast_from_row(stmt);
 		        podcasts.add(current);
 	        }
 
 	        stmt.reset();
 
-
 	        // Repeat the process with the episodes
-
-	        foreach(Podcast p in podcasts) {
+	        foreach(Podcast podcast in podcasts) {
                 var all_episodes = new Gee.ArrayList<Episode>();
 
-	            prepared_query_str = "SELECT * FROM Episode WHERE parent_podcast_name = '%s' ORDER BY rowid ASC".printf(p.name);
+	            prepared_query_str = "SELECT * FROM Episode WHERE parent_podcast_name = '%s' ORDER BY rowid ASC".printf(podcast.name);
 	            ec = db.prepare_v2 (prepared_query_str, prepared_query_str.length, out stmt);
 	            if (ec != Sqlite.OK) {
-		            stderr.printf ("Error: %d: %s\n", db.errcode (), db.errmsg ());
+		            error ("Error: %d: %s", db.errcode (), db.errmsg ());
 		            return;
 	            }
 
-	            cols = stmt.column_count ();
 	            while (stmt.step () == Sqlite.ROW) {
+                    Episode episode = episode_from_row(stmt);
+                    episode.parent = podcast;
 
-	                Episode current_ep = new Episode();
-	                current_ep.parent = p;
-		            for (int i = 0; i < cols; i++) {
-			            string col_name = stmt.column_name (i) ?? "<none>";
-			            string val = stmt.column_text (i) ?? "<none>";
-
-                        if(col_name == "title") {
-                            current_ep.title = val;
-                        }
-                        else if(col_name == "description") {
-                            current_ep.description = val;
-                        }
-                        else if (col_name == "uri") {
-                            current_ep.uri = val;
-                        }
-                        else if (col_name == "local_uri") {
-                            if(val != "(null)")
-                                current_ep.local_uri = val;
-                        }
-                        else if (col_name == "release_date") {
-                            current_ep.date_released = val;
-                            current_ep.set_datetime_from_pubdate();
-                        }
-                        else if(col_name == "download_status") {
-                            current_ep.download_status = DownloadStatus.from_string(val);
-                            }
-                        else if (col_name == "play_status") {
-                            current_ep.status = EpisodeStatus.from_string(val);
-                        }
-                        else if (col_name == "latest_position") {
-                            double position = 0;
-                            if(double.try_parse(val, out position)) {
-                                current_ep.last_played_position = position;
-                            }
-                        }
-		            }
-
-                    all_episodes.add(current_ep);
+		            podcast.episodes.add(episode);
 	            }
 
-                p.add_episodes(all_episodes);
+                podcast.add_episodes(all_episodes);
 
 	            stmt.reset();
             }
@@ -933,7 +868,7 @@ namespace Vocal {
             int ec = db.prepare_v2 (prepared_query_str, prepared_query_str.length, out stmt);
             ec = stmt.bind_text(1, term, -1, null);
             if (ec != Sqlite.OK) {
-                warning("%d: %s\n".printf(db.errcode (), db.errmsg ()));
+                warning("%d: %s\n", db.errcode (), db.errmsg ());
                 return matches;
             }
 
@@ -941,35 +876,9 @@ namespace Vocal {
 
             int cols = stmt.column_count ();
             while (stmt.step () == Sqlite.ROW) {
+                Podcast current = podcast_from_row(stmt);
 
-                Podcast current = new Podcast();
-                for (int i = 0; i < cols; i++) {
-                    string col_name = stmt.column_name (i) ?? "<none>";
-                    string val = stmt.column_text (i) ?? "<none>";
-
-                    if(col_name == "name") {
-                        current.name = val;
-                    }
-                    else if(col_name == "feed_uri") {
-                        current.feed_uri = val;
-                    }
-                    else if (col_name == "album_art_url") {
-                        current.remote_art_uri = val;
-                    }
-                    else if (col_name == "album_art_local_uri") {
-                        current.local_art_uri = val;
-                    }
-                    else if(col_name == "description") {
-                        current.description = val;
-                    }
-                    else if (col_name == "content_type") {
-                        current.content_type = MediaType.from_string(val);
-                    }
-                }
-
-                //Add the new podcast
                 matches.add(current);
-
             }
 
             stmt.reset();
@@ -996,47 +905,7 @@ namespace Vocal {
 
             int cols = stmt.column_count ();
             while (stmt.step () == Sqlite.ROW) {
-
-                Episode current_ep = new Episode();
-                current_ep.parent = new Podcast();
-
-                for (int i = 0; i < cols; i++) {
-                    string col_name = stmt.column_name (i) ?? "<none>";
-                    string val = stmt.column_text (i) ?? "<none>";
-
-                    if(col_name == "title") {
-                        current_ep.title = val;
-                    }
-                    else if(col_name == "description") {
-                        current_ep.description = val;
-                    }
-                    else if (col_name == "uri") {
-                        current_ep.uri = val;
-                    }
-                    else if (col_name == "local_uri") {
-                        if(val != "(null)")
-                            current_ep.local_uri = val;
-                    }
-                    else if (col_name == "release_date") {
-                        current_ep.date_released = val;
-                        current_ep.set_datetime_from_pubdate();
-                    }
-                    else if(col_name == "download_status") {
-                        current_ep.download_status = DownloadStatus.from_string(val);
-                    }
-                    else if (col_name == "play_status") {
-                        current_ep.status = EpisodeStatus.from_string(val);
-                    }
-                    else if (col_name == "latest_position") {
-                        double position = 0;
-                        if(double.try_parse(val, out position)) {
-                            current_ep.last_played_position = position;
-                        }
-                    }
-                    else if(col_name == "parent_podcast_name") {
-                        current_ep.parent.name = val;
-                    }
-                }
+                Episode current_ep = episode_from_row(stmt);
 
                 //Add the new episode
                 matches.add(current_ep);
@@ -1071,12 +940,11 @@ namespace Vocal {
         }
 
         public Gee.ArrayList<Podcast>? search_by_term(string term) {
-
             prepare_database();
 
             Sqlite.Statement stmt;
 
-            Gee.ArrayList<Podcast> search_pods = new Gee.ArrayList<Podcast>();
+            var search_pods = new Gee.ArrayList<Podcast>();
 
             string prepared_query_str = "SELECT * FROM Podcast WHERE name='%s' ORDER BY name".printf(term);
             int ec = db.prepare_v2 (prepared_query_str, prepared_query_str.length, out stmt);
@@ -1087,45 +955,89 @@ namespace Vocal {
 
             // Use the prepared statement:
 
-            int cols = stmt.column_count ();
-
             while (stmt.step () == Sqlite.ROW) {
+                Podcast current = podcast_from_row(stmt);
 
-                Podcast current = new Podcast();
-
-                for (int i = 0; i < cols; i++) {
-                    string col_name = stmt.column_name (i) ?? "<none>";
-                    string val = stmt.column_text (i) ?? "<none>";
-
-                    if(col_name == "name") {
-                        current.name = val;
-                    }
-                    else if(col_name == "feed_uri") {
-                        current.feed_uri = val;
-                    }
-                    else if (col_name == "album_art_url") {
-                        current.remote_art_uri = val;
-                    }
-                    else if (col_name == "album_art_local_uri") {
-                        current.local_art_uri = val;
-                    }
-                    else if(col_name == "description") {
-                        current.description = val;
-                    }
-                    else if (col_name == "content_type") {
-                        current.content_type = MediaType.from_string(val);
-                    }
-                }
-
-                //Add the new podcast
                 search_pods.add(current);
-
             }
 
             stmt.reset();
 
             return search_pods;
+        }
 
+        public Episode episode_from_row(Statement stmt) {
+            Episode episode = new Episode();
+
+            for (int i = 0; i < stmt.column_count(); i++) {
+                string col_name = stmt.column_name (i) ?? "<none>";
+                string val = stmt.column_text (i) ?? "<none>";
+
+                if(col_name == "title") {
+                    episode.title = val;
+                }
+                else if(col_name == "description") {
+                    episode.description = val;
+                }
+                else if (col_name == "uri") {
+                    episode.uri = val;
+                }
+                else if (col_name == "local_uri") {
+                    if(val != "(null)")
+                        episode.local_uri = val;
+                }
+                else if (col_name == "release_date") {
+                    episode.date_released = val;
+                    episode.set_datetime_from_pubdate();
+                }
+                else if(col_name == "download_status") {
+                    episode.download_status = DownloadStatus.from_string(val);
+                }
+                else if (col_name == "play_status") {
+                    episode.status = EpisodeStatus.from_string(val);
+                }
+                else if (col_name == "latest_position") {
+                    double position = 0;
+                    if(double.try_parse(val, out position)) {
+                        episode.last_played_position = position;
+                    }
+                }
+                else if(col_name == "parent_podcast_name") {
+                    episode.parent = new Podcast.with_name(val);
+                }
+            }
+
+            return episode;
+        }
+
+        public Podcast podcast_from_row(Statement stmt) {
+            Podcast podcast = new Podcast();
+
+            for (int i = 0; i < stmt.column_count(); i++) {
+                string col_name = stmt.column_name (i) ?? "<none>";
+                string val = stmt.column_text (i) ?? "<none>";
+
+                if(col_name == "name") {
+                    podcast.name = val;
+                }
+                else if(col_name == "feed_uri") {
+                    podcast.feed_uri = val;
+                }
+                else if (col_name == "album_art_url") {
+                    podcast.remote_art_uri = val;
+                }
+                else if (col_name == "album_art_local_uri") {
+                    podcast.local_art_uri = val;
+                }
+                else if(col_name == "description") {
+                    podcast.description = val;
+                }
+                else if (col_name == "content_type") {
+                    podcast.content_type = MediaType.from_string(val);
+                }
+            }
+
+            return podcast;
         }
 
         public void set_episode_playback_position(Episode episode) {
@@ -1133,7 +1045,6 @@ namespace Vocal {
             int ec;
             string title = episode.title.replace("'", "%27");
             string position_text = episode.last_played_position.to_string();
-
 
             query = """UPDATE Episode SET latest_position = '%s' WHERE title = '%s'""".printf(position_text,title);
 

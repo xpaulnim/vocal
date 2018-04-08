@@ -37,6 +37,7 @@ namespace Vocal {
         public Welcome welcome;
         private DirectoryView directory;
         public SearchResultsView search_results_view;
+        public NewEpisodesView new_episodes_view;
         private Gtk.Stack notebook;
         public PodcastView podcast_view;
         private Gtk.Box import_message_box;
@@ -59,6 +60,7 @@ namespace Vocal {
         public AllPodcastsView all_podcasts_view;
         public Gtk.ScrolledWindow directory_scrolled;
         public Gtk.ScrolledWindow search_results_scrolled;
+        public Gtk.ScrolledWindow new_episodes_scrolled;
 
         /* Video playback */
 
@@ -278,10 +280,26 @@ namespace Vocal {
                     _("If you have exported feeds from another podcast manager, import them here."));
             welcome.activated.connect(on_welcome);
             
+            info ("Creating new episodes view.");
+            new_episodes_view = new NewEpisodesView (controller);
+            new_episodes_view.go_back.connect (() => {
+                switch_visible_page(all_podcasts_view);
+            });
+            new_episodes_view.play_episode_requested.connect((episode) => {
+                play_different_track(episode);
+            });
+            new_episodes_view.add_all_new_to_queue.connect ((episodes) => {
+                foreach (Episode e in episodes) {
+                    controller.library.enqueue_episode (e);
+                }
+            });
+                        
             info ("Creating scrolled containers and album art views.");
 
             // Set up scrolled windows so that content will scoll instead of causing the window to expand
             directory_scrolled = new Gtk.ScrolledWindow (null, null);
+            new_episodes_scrolled = new Gtk.ScrolledWindow (null, null);
+            new_episodes_scrolled.add (new_episodes_view);
             search_results_scrolled = new Gtk.ScrolledWindow(null, null);
             search_results_box = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
             search_results_scrolled.add(search_results_box);
@@ -345,6 +363,7 @@ namespace Vocal {
             notebook.add_titled(import_message_box, "import", _("Importing"));
             notebook.add_titled(all_podcasts_view, "all", _("All Podcasts"));
             notebook.add_titled(podcast_view, "podcast_view", _("Details"));
+            notebook.add_titled (new_episodes_scrolled, "new_episodes", _("New Episodes"));
             notebook.add_titled(video_widget, "video_player", _("Video"));
             
             bool show_complete_button = controller.first_run || controller.library_empty;
@@ -396,6 +415,10 @@ namespace Vocal {
                 settings_dialog = new SettingsDialog (controller.settings, this);
                 settings_dialog.show_name_label_toggled.connect (on_show_name_label_toggled);
                 settings_dialog.show_all ();
+            });
+            
+            toolbar.new_episodes_button.clicked.connect (() => {
+                switch_visible_page (new_episodes_scrolled);
             });
 
             toolbar.refresh_selected.connect (controller.on_update_request);
@@ -480,81 +503,88 @@ namespace Vocal {
             }
             info("Window initialization complete.");
         }
+        
+        /*
+         * Populates the three views (all, audio, video) from the contents of the controller.library
+         */
+        public void populate_views() {
+            if(!controller.currently_repopulating) {
+                controller.currently_repopulating = true;
+                bool has_video = false;
+
+                // If it's not the first run or newly launched go ahead and remove all the widgets from the flowboxes
+                if(!controller.first_run && !controller.newly_launched) {
+                    all_podcasts_view.clear();
+                }
+
+                // If the program was just launched, check to see what the last played media was
+                if(controller.newly_launched) {
+                    current_widget = all_podcasts_view;
+
+                    if(controller.settings.last_played_media != null && controller.settings.last_played_media.length > 1) {
+
+                        // Split the media into two different strings
+                        string[] fields = controller.settings.last_played_media.split(",");
+                        string podcast_name = fields[1];
+                        string episode_title = fields[0];
+
+                        Podcast podcast = controller.library.get_podcast_by_name(podcast_name);
+                        if(podcast != null) {
+                            Episode episode = podcast.find_episode_by_title(episode_title);
+                            if(episode != null) {
+                                controller.current_episode = episode;
+                                toolbar.playback_box.set_info_title(controller.current_episode.title.replace("%27", "'"), controller.current_episode.parent.name.replace("%27", "'"));
+                                controller.track_changed(controller.current_episode.title, controller.current_episode.parent.name, controller.current_episode.parent.coverart_uri, (uint64) controller.player.duration);
+
+                                try {
+
+                                    controller.player.set_episode(controller.current_episode);
+                                    controller.player.set_position(controller.current_episode.last_played_position);
+                                    shownotes.set_notes_text(episode.description);
+
+                                } catch(Error e) {
+                                    warning(e.message);
+                                }
+
+                                if(controller.current_episode.last_played_position != 0) {
+                                    toolbar.show_playback_box();
+                                } else {
+                                    toolbar.hide_playback_box();
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Refill the library based on what is stored in the database (if it's not newly launched, in
+                // which case it has already been filled)
+                if(!controller.newly_launched){
+                    controller.library.refill_library();
+                }
+
+                info("Adding coverart to view.");
+                foreach(Podcast podcast in controller.library.podcasts) {
+                    all_podcasts_view.add_podcast(podcast);
+                }
+                
+                controller.currently_repopulating = false;
+            }
+
+            new_episodes_view.populate_episodes_list ();
+            // If the app is supposed to open hidden, don't present the window. Instead, hide it
+            if(!controller.open_hidden && !controller.is_closing) {
+                show_all();
+            }
+        }
 
         /*
          * Populates the three views (all, audio, video) from the contents of the controller.library
          */
-        public async void populate_views() {
-
-            SourceFunc callback = populate_views.callback;
+        public async void populate_views_async() {
+            SourceFunc callback = populate_views_async.callback;
 
             ThreadFunc<void*> run = () => {
-
-            	if(!controller.currently_repopulating) {
-            		controller.currently_repopulating = true;
-    	            bool has_video = false;
-
-                    // If it's not the first run or newly launched go ahead and remove all the widgets from the flowboxes
-                    if(!controller.first_run && !controller.newly_launched) {
-                        all_podcasts_view.clear();
-                    }
-
-    	            // If the program was just launched, check to see what the last played media was
-    	            if(controller.newly_launched) {
-                        current_widget = all_podcasts_view;
-
-    	                if(controller.settings.last_played_media != null && controller.settings.last_played_media.length > 1) {
-
-    	                    // Split the media into two different strings
-    	                    string[] fields = controller.settings.last_played_media.split(",");
-                            string podcast_name = fields[1];
-                            string episode_title = fields[0];
-
-                            Podcast podcast = controller.library.get_podcast_by_name(podcast_name);
-                            if(podcast != null) {
-                                Episode episode = podcast.find_episode_by_title(episode_title);
-                                if(episode != null) {
-                                    controller.current_episode = episode;
-                                    toolbar.playback_box.set_info_title(controller.current_episode.title.replace("%27", "'"), controller.current_episode.parent.name.replace("%27", "'"));
-                                    controller.track_changed(controller.current_episode.title, controller.current_episode.parent.name, controller.current_episode.parent.coverart_uri, (uint64) controller.player.duration);
-
-                                    try {
-
-                                        controller.player.set_episode(controller.current_episode);
-                                        controller.player.set_position(controller.current_episode.last_played_position);
-                                        shownotes.set_notes_text(episode.description);
-
-                                    } catch(Error e) {
-                                        warning(e.message);
-                                    }
-
-                                    if(controller.current_episode.last_played_position != 0) {
-                                        toolbar.show_playback_box();
-                                    } else {
-                                        toolbar.hide_playback_box();
-                                    }
-                                }
-                            }
-    	                }
-    	            }
-
-    	            // Refill the library based on what is stored in the database (if it's not newly launched, in
-    	            // which case it has already been filled)
-    	            if(!controller.newly_launched){
-    	                controller.library.refill_library();
-    	            }
-
-    	            // Clear flags since we have an established controller.library at this point
-    	            controller.newly_launched = false;
-    	            controller.first_run = false;
-    	            controller.library_empty = false;
-
-	                foreach(Podcast podcast in controller.library.podcasts) {
-                        all_podcasts_view.add_podcast(podcast);
-	                }
-
-    	            controller.currently_repopulating = false;
-            	}
+            	populate_views ();
 
                 Idle.add((owned) callback);
                 return null;
@@ -563,11 +593,6 @@ namespace Vocal {
             Thread.create<void*>(run, false);
 
             yield;
-
-            // If the app is supposed to open hidden, don't present the window. Instead, hide it
-            if(!controller.open_hidden && !controller.is_closing) {
-                show_all();
-            }
         }
 
 
@@ -743,7 +768,7 @@ namespace Vocal {
                             toolbar.show_shownotes_button();
                             toolbar.show_playlist_button();
 
-                            populate_views();
+                            populate_views_async();
 
                             if(current_widget == import_message_box) {
                                 switch_visible_page(all_podcasts_view);
@@ -859,6 +884,10 @@ namespace Vocal {
             else if (widget == welcome) {
                 notebook.set_visible_child(welcome);
                 current_widget = welcome;
+            }
+            else if (widget == new_episodes_scrolled) {
+                notebook.set_visible_child (new_episodes_scrolled);
+                current_widget = new_episodes_view;
             }
             else {
                 info("Attempted to switch to a notebook page that didn't exist. This is likely a bug and might cause issues.");
@@ -1113,6 +1142,9 @@ namespace Vocal {
                 switch (response_id) {
                     case Gtk.ResponseType.YES:
                         controller.library.unsubscribe_from_podcast(podcast);
+                        controller.highlighted_podcast = null;
+                        switch_visible_page(podcast_view);
+                        populate_views_async();
                         break;
                     case Gtk.ResponseType.NO:
                         break;
@@ -1214,6 +1246,8 @@ namespace Vocal {
             controller.library.set_episode_playback_position(controller.player.current_episode);
 
             controller.playback_status_changed("Stopped");
+            
+            new_episodes_view.remove_episode_from_list (controller.player.current_episode);
 
             controller.current_episode = controller.library.get_next_episode_in_queue();
 

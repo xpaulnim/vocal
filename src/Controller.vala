@@ -593,7 +593,7 @@ namespace Vocal {
                 // Lastly, if there are new episodes, repopulate the views to obtain new counts
                 if(new_episodes.size > 0) {
                     info ("Repopulating views after the update process has finished.");
-                    window.populate_views();
+                    window.populate_views_async();
                 }
                 
                 new_episodes = null;
