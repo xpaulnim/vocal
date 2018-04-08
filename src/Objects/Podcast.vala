@@ -1,20 +1,20 @@
 /***
-BEGIN LICENSE
+    BEGIN LICENSE
 
-Copyright (C) 2014-2015 Nathan Dyer <mail@nathandyer.me>
-This program is free software: you can redistribute it and/or modify it
-under the terms of the GNU Lesser General Public License version 3, as
-published by the Free Software Foundation.
+    Copyright (C) 2014-2015 Nathan Dyer <mail@nathandyer.me>
+    This program is free software: you can redistribute it and/or modify it
+    under the terms of the GNU Lesser General Public License version 3, as
+    published by the Free Software Foundation.
 
-This program is distributed in the hope that it will be useful, but
-WITHOUT ANY WARRANTY; without even the implied warranties of
-MERCHANTABILITY, SATISFACTORY QUALITY, or FITNESS FOR A PARTICULAR
-PURPOSE.  See the GNU General Public License for more details.
+    This program is distributed in the hope that it will be useful, but
+    WITHOUT ANY WARRANTY; without even the implied warranties of
+    MERCHANTABILITY, SATISFACTORY QUALITY, or FITNESS FOR A PARTICULAR
+    PURPOSE.  See the GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public License along
-with this program.  If not, see <http://www.gnu.org/licenses>
+    You should have received a copy of the GNU General Public License along
+    with this program.  If not, see <http://www.gnu.org/licenses>
 
-END LICENSE
+    END LICENSE
 ***/
 
 using Gee;
@@ -29,7 +29,7 @@ namespace Vocal {
         public string name                  = null;
         public string feed_uri              = null;
         public string remote_art_uri        = null;   // the web link to the album art if local is unavailable
-        public string local_art_uri         = "";   // where the locally cached album art is located      
+        public string local_art_uri         = null;   // where the locally cached album art is located      
         public string description           = null;
         private int _unplayed_count         = 0;
         public int unplayed_count {
@@ -50,7 +50,7 @@ namespace Vocal {
                     if(local_art.query_exists()) {
                         return local_art_uri;
                     }
-                } else if(remote_art_uri != "") {
+                } else if(remote_art_uri != null) {
                     GLib.File remote_art = GLib.File.new_for_uri(remote_art_uri);
                     if(remote_art.query_exists()) {
                         return remote_art_uri;
