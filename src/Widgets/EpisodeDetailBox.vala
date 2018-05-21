@@ -29,6 +29,7 @@ namespace Vocal {
         private bool played;
         private bool now_playing;
 
+        private ImageCache image_cache;
         public Episode episode;
         public int     index;
         public int     box_index;
@@ -51,8 +52,9 @@ namespace Vocal {
 		 * index number for this box in the list in the side pane), and whether Vocal is running
 		 * in elementary (determines the icons).
 		 */
-        public EpisodeDetailBox(Episode episode, int index, int box_index, bool on_elementary, bool? new_episodes_view = false) {
+        public EpisodeDetailBox(Episode episode, ImageCache image_cache, int index, int box_index, bool on_elementary, bool? new_episodes_view = false) {
             this.episode = episode;
+            this.image_cache = image_cache;
             this.index = index;
             this.box_index = box_index;
             this.top_box = new Gtk.Box(Gtk.Orientation.HORIZONTAL, 0);
@@ -114,13 +116,19 @@ namespace Vocal {
             }
             
             if (new_episodes_view) {
-			    var file = GLib.File.new_for_uri(episode.parent.coverart_uri);
-			    var icon = new GLib.FileIcon(file);
-			    var image = new Gtk.Image.from_gicon(icon, Gtk.IconSize.DIALOG);
-			    image.margin = 12;
-			    image.margin_top = 0;
-			    image.margin_bottom = 0;
-			    image.pixel_size = 75;
+                var image = new Gtk.Image();
+                image.pixel_size = 75;
+                
+                image_cache.get_image.begin(episode.parent.coverart_uri, (obj, res) => {
+                    Gdk.Pixbuf pixbuf = image_cache.get_image.end(res);
+                    if(pixbuf != null) {
+                        CoverArt.create_cover_image(image, pixbuf, 75);
+                        image.margin = 12;
+                        image.margin_top = 0;
+                        image.margin_bottom = 0;
+                        image.margin = 0;
+                    }
+				});
 			    unplayed_box.pack_start (image, false, false, 0);
             }
 

@@ -25,14 +25,16 @@ namespace Vocal {
     public class NewEpisodesView : Gtk.Box {
         
         private Controller controller;
+        private ImageCache image_cache;
         private ListBox new_episodes_listbox;
         GLib.ListStore episodeListModel = new GLib.ListStore ( typeof (Episode) );
         public signal void go_back();
         public signal void play_episode_requested (Episode episode);
         public signal void add_all_new_to_queue (GLib.List<Episode> episodes);
         
-        public NewEpisodesView (Controller cont) {
+        public NewEpisodesView (Controller cont, ImageCache image_cache) {
             controller = cont;
+            this.image_cache = image_cache;
             
             var toolbar = new Gtk.Box(Gtk.Orientation.HORIZONTAL, 0);
             toolbar.get_style_context().add_class("toolbar");
@@ -94,7 +96,7 @@ namespace Vocal {
             }
 
             new_episodes_listbox.bind_model(episodeListModel, (item) => {
-                return new EpisodeDetailBox((Episode) item, 0, 0, false, true);
+                return new EpisodeDetailBox((Episode) item, image_cache, 0, 0, false, true);
             });
             show_all ();
         }

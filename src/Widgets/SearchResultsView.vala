@@ -47,6 +47,7 @@ namespace Vocal {
         private Gtk.Box content_box;
         private Gtk.Spinner spinner;
 
+        private ImageCache image_cache;
         private Library library;
 
         private Gtk.Label no_local_episodes_label;
@@ -59,13 +60,14 @@ namespace Vocal {
         /*
          * Constructor for the full search results view. Shows all matches from the local library and across the iTunes ecosystem
          */
-        public SearchResultsView(Library library, iTunesProvider itunes_provider) {
+        public SearchResultsView(Library library, iTunesProvider itunes_provider, ImageCache image_cache) {
             container = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
             add(container);
 
             string query = "";
             this.itunes = itunes_provider;
             this.library = library;
+            this.image_cache = image_cache;
 
             var return_button = new Gtk.Button.with_label(_("Return to Library"));
             return_button.clicked.connect(() => { return_to_library (); });
@@ -226,7 +228,7 @@ namespace Vocal {
             ThreadFunc<void*> run = () => {
                 Gee.ArrayList<DirectoryEntry> c_matches = itunes.search_by_term(search_term);
                 foreach(DirectoryEntry c in c_matches) {
-                    DirectoryArt a = new DirectoryArt(c.itunesUrl, c.title, c.artist, c.summary, c.artworkUrl600);
+                    DirectoryArt a = new DirectoryArt(image_cache, c.itunesUrl, c.title, c.artist, c.summary, c.artworkUrl600);
                     a.subscribe_button_clicked.connect((url) => {
                         on_new_subscription(url);
                     });

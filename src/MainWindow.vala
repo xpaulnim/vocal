@@ -30,6 +30,7 @@ namespace Vocal {
 
         /* Core components */
 
+        private ImageCache image_cache;
         private Controller controller;
 
         /* Primary widgets */
@@ -84,6 +85,7 @@ namespace Vocal {
         public MainWindow (Controller controller) {
 
             this.controller = controller;
+            this.image_cache = new ImageCache();
 
             const string ELEMENTARY_STYLESHEET = """
 
@@ -271,7 +273,7 @@ namespace Vocal {
             
             info ("Creating podcast view."); 
             
-            details = new PodcastView (controller);
+            details = new PodcastView (controller, image_cache);
             details.go_back.connect(() => {
                 switch_visible_page(all_podcasts);
             });
@@ -288,7 +290,7 @@ namespace Vocal {
             welcome.activated.connect(on_welcome);
             
             info ("Creating new episodes view.");
-            new_episodes_view = new NewEpisodesView (controller);
+            new_episodes_view = new NewEpisodesView (controller, image_cache);
             new_episodes_view.go_back.connect (() => {
                 switch_visible_page(all_podcasts);
             });
@@ -304,7 +306,7 @@ namespace Vocal {
             info ("Creating scrolled containers and album art views.");
 
             // Set up scrolled windows so that content will scoll instead of causing the window to expand
-            all_podcasts = new AllPodcastView (controller.library);
+            all_podcasts = new AllPodcastView (controller.library, image_cache);
             all_podcasts.on_art_activated.connect((coverart) => {
                 this.current_episode_art = coverart;
                 controller.highlighted_podcast = coverart.podcast;
@@ -353,7 +355,7 @@ namespace Vocal {
             
             info ("Creating directory view.");
             
-            directory = new DirectoryView(controller.itunes, show_complete_button);
+            directory = new DirectoryView(controller.itunes, image_cache, show_complete_button);
             directory.on_new_subscription.connect(on_new_subscription);
             directory.return_to_library.connect(on_return_to_library);
             directory.return_to_welcome.connect(() => {
@@ -361,7 +363,7 @@ namespace Vocal {
             });
 
              // Create the search box
-            search_results_view = new SearchResultsView(controller.library, controller.itunes);
+            search_results_view = new SearchResultsView(controller.library, controller.itunes, image_cache);
             search_results_view.on_new_subscription.connect(on_new_subscription);
             search_results_view.return_to_library.connect(() => {
                 switch_visible_page(previous_widget);
@@ -450,7 +452,7 @@ namespace Vocal {
 
             info ("Creating queue popover.");
             // Create the queue popover
-            queue_popover = new QueuePopover(toolbar.playlist_button);
+            queue_popover = new QueuePopover(toolbar.playlist_button, image_cache);
             controller.library.queue_changed.connect(() => {
                 queue_popover.set_queue(controller.library.queue);
             });
@@ -1060,11 +1062,11 @@ namespace Vocal {
         /*
          * Called when the user requests to mark a podcast as played from the controller.library via the right-click menu
          */
-        public void on_mark_as_played_request() {
+        public void on_mark_as_played_request(Podcast podcast) {
 
-            if(controller.highlighted_podcast != null) {
+            //  if(controller.highlighted_podcast != null) {
                 Gtk.MessageDialog msg = new Gtk.MessageDialog (this, Gtk.DialogFlags.MODAL, Gtk.MessageType.WARNING, Gtk.ButtonsType.YES_NO,
-                     _("Are you sure you want to mark all episodes from '%s' as played?".printf(GLib.Markup.escape_text(controller.highlighted_podcast.name.replace("%","%%")))));
+                     _("Are you sure you want to mark all episodes from '%s' as played?".printf(GLib.Markup.escape_text(podcast.name.replace("%","%%")))));
 
                 var image = new Gtk.Image.from_icon_name("dialog-question", Gtk.IconSize.DIALOG);
                 msg.image = image;
@@ -1073,7 +1075,7 @@ namespace Vocal {
 			    msg.response.connect ((response_id) => {
 			        switch (response_id) {
 				        case Gtk.ResponseType.YES:
-                            mark_all_as_played_async(controller.highlighted_podcast);
+                            mark_all_as_played_async(podcast);
 					        break;
 				        case Gtk.ResponseType.NO:
 					        break;
@@ -1082,7 +1084,7 @@ namespace Vocal {
 			        msg.destroy();
 		        });
 		        msg.show ();
-	        }
+	        //  }
         }
 
         
@@ -1250,19 +1252,18 @@ namespace Vocal {
         /*
          * Called when the user requests to remove a podcast from the controller.library via the right-click menu
          */
-        public void on_remove_request() {
-            if(controller.highlighted_podcast != null) {
-                Gtk.MessageDialog msg = new Gtk.MessageDialog (this, Gtk.DialogFlags.MODAL, Gtk.MessageType.WARNING, Gtk.ButtonsType.NONE,
-                                                               _("Are you sure you want to remove '%s' from your controller.library?"),
-                                                               controller.highlighted_podcast.name.replace("%27", "'"));
+        public void on_remove_request(Podcast podcast) {
+            //  if(controller.highlighted_podcast != null) {
+                Gtk.MessageDialog msg = new Gtk.MessageDialog (
+                    this, Gtk.DialogFlags.MODAL, Gtk.MessageType.WARNING, Gtk.ButtonsType.NONE,
+                    _("Are you sure you want to remove '%s' from your library?"), podcast.name.replace("%27", "'"));
 
 
                 msg.add_button (_("No"), Gtk.ResponseType.NO);
                 Gtk.Button delete_button = (Gtk.Button) msg.add_button(_("Yes"), Gtk.ResponseType.YES);
                 delete_button.get_style_context().add_class("destructive-action");
 
-                var image = new Gtk.Image.from_icon_name("dialog-warning", Gtk.IconSize.DIALOG);
-                msg.image = image;
+                msg.image = new Gtk.Image.from_icon_name("dialog-warning", Gtk.IconSize.DIALOG);
                 msg.image.show_all();
 
 			    msg.response.connect ((response_id) => {
@@ -1280,7 +1281,7 @@ namespace Vocal {
 			        msg.destroy();
 		        });
 		        msg.show ();
-	        }
+	        //  }
         }
 
 

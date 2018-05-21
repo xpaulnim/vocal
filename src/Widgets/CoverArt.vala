@@ -42,12 +42,13 @@ namespace Vocal {
 		                                                // (if it is enabled in the settings)
 
 		public Podcast podcast;						// Refers to the podcast this coverart represents
+		private ImageCache image_cache;
 
 
 		/*
 		 * Constructor for CoverArt given an image path and a podcast
 		 */
-		public CoverArt(Podcast podcast, bool? show_mimetype = false) {
+		public CoverArt(Podcast podcast, ImageCache image_cache,bool? show_mimetype = false) {
 			this.podcast = podcast;
 			this.margin = 10;
 			this.orientation = Gtk.Orientation.VERTICAL;
@@ -121,9 +122,16 @@ namespace Vocal {
 			}
 			
 			try {
-				create_cover_image.begin (image, path.replace("%27", "'"), (obj, async_res) => {
-					show_all();
+				image_cache.get_image.begin(path.replace("%27", "'"), (obj, res) => {
+					Gdk.Pixbuf pixbuf = image_cache.get_image.end(res);
+					if (pixbuf != null) {
+						create_cover_image(image, pixbuf, COVER_SIZE);
+					}
 				});
+
+				//  create_cover_image.begin (image, path.replace("%27", "'"), (obj, async_res) => {
+				//  	show_all();
+				//  });
 			} catch (Error e) {
 				warning("Failed to load cover art from %s. %s", path, e.message);
 			}
@@ -132,40 +140,44 @@ namespace Vocal {
 		/*
 		 * Creates a pixbuf given an InputStream
 		 */
-        private async void create_cover_image (Gtk.Image image, string path) throws Error {
-			GLib.File file = Utils.open_file(path);
+        public static void create_cover_image (Gtk.Image image, Gdk.Pixbuf pixbuf, int image_size) throws Error {
+			//  GLib.File file = Utils.open_file(path);
 
-			GLib.InputStream stream = yield file.read_async ();
-			Gdk.Pixbuf cover_image = yield Gdk.Pixbuf.new_from_stream_async (stream);
+			//  GLib.InputStream stream = yield file.read_async ();
+			//  Gdk.Pixbuf cover_image = yield Gdk.Pixbuf.new_from_stream_async (stream);
+			Gdk.Pixbuf cover_image = pixbuf;
 
             if (cover_image.height == cover_image.width)
-                cover_image = cover_image.scale_simple (COVER_SIZE, COVER_SIZE, Gdk.InterpType.BILINEAR);
+                cover_image = cover_image.scale_simple (image_size, image_size, Gdk.InterpType.BILINEAR);
 
             if (cover_image.height > cover_image.width) {
 
-                int new_height = COVER_SIZE * cover_image.height / cover_image.width;
-                int new_width = COVER_SIZE;
+                int new_height = image_size * cover_image.height / cover_image.width;
+                int new_width = image_size;
                 int offset = (new_height - new_width) / 2;
 
-                cover_image = new Gdk.Pixbuf.subpixbuf(cover_image.scale_simple (new_width, new_height, Gdk.InterpType.BILINEAR), 0, offset, COVER_SIZE, COVER_SIZE);
+                cover_image = new Gdk.Pixbuf.subpixbuf(cover_image.scale_simple (new_width, new_height, Gdk.InterpType.BILINEAR), 0, offset, image_size, image_size);
 
             } else if (cover_image.height < cover_image.width) {
 
-                int new_height = COVER_SIZE;
-                int new_width = COVER_SIZE * cover_image.width / cover_image.height;
+                int new_height = image_size;
+                int new_width = image_size * cover_image.width / cover_image.height;
                 int offset = (new_width - new_height) / 2;
 
-                cover_image = new Gdk.Pixbuf.subpixbuf(cover_image.scale_simple (new_width, new_height, Gdk.InterpType.BILINEAR), offset, 0, COVER_SIZE, COVER_SIZE);
-            }
+                cover_image = new Gdk.Pixbuf.subpixbuf(cover_image.scale_simple (new_width, new_height, Gdk.InterpType.BILINEAR), offset, 0, image_size, COVER_SIZE);
+			}
 
-			image.set_from_pixbuf (cover_image);
+			if(image != null) {
+				image.clear();
+
+				image.set_from_pixbuf (cover_image);
+			}
         }
 
 		/*
 		 * Hides the banner and the count
 		 */
-		public void hide_count()
-		{
+		public void hide_count() {
 		    if (count_label != null && triangle != null) {
 			    count_label.set_no_show_all(true);
 			    count_label.hide();

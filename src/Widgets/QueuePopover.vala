@@ -26,12 +26,13 @@ namespace Vocal {
 		public signal void play_episode_from_queue_immediately(Episode e);
 
 		private QueueList episodes;
+		private ImageCache image_cache;
 
 		private Gtk.Label label;
 		private Gtk.ScrolledWindow scrolled_window;
 		private Gtk.Box scrolled_box;
 
-		public QueuePopover(Gtk.Widget parent) {
+		public QueuePopover(Gtk.Widget parent, ImageCache image_cache) {
 			this.set_relative_to(parent);
 
 			label = new Gtk.Label(_("No episodes in queue"));
@@ -61,7 +62,7 @@ namespace Vocal {
 			if(queue.size > 0) {
 				hide_label();
 
-				episodes = new QueueList(queue);
+				episodes = new QueueList(queue, image_cache);
 				episodes.vadjustment = scrolled_window.vadjustment;
 				episodes.update_queue.connect((oldPos, newPos) => { update_queue(oldPos, newPos); });
 				episodes.row_activated.connect(on_row_activated);
@@ -110,13 +111,14 @@ namespace Vocal {
 		public signal void update_queue(int oldPos, int newPos);
 		public signal void remove_episode(Episode e);
 
-		public Gee.ArrayList<QueueListRow> rows; 
+		public Gee.ArrayList<QueueListRow> rows;
+		private ImageCache image_cache;
 
 		private const Gtk.TargetEntry targetEntries[] = {
 		  { "GTK_LIST_BOX_ROW", Gtk.TargetFlags.SAME_APP, 0 }
     };
 
-		public QueueList(Gee.ArrayList<Episode> queue) {
+		public QueueList(Gee.ArrayList<Episode> queue, ImageCache image_cache) {
 			selection_mode = Gtk.SelectionMode.NONE;
 			rows = new Gee.ArrayList<QueueListRow>();
 
@@ -124,7 +126,7 @@ namespace Vocal {
       drag_data_received.connect(on_drag_data_received);
 
 			foreach(Episode e in queue) {
-				QueueListRow listRow = new QueueListRow(e);
+				QueueListRow listRow = new QueueListRow(e, image_cache);
 
 				listRow.remove_episode.connect((e) => { remove_episode(e); });
 

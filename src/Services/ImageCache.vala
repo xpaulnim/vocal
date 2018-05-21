@@ -83,9 +83,11 @@ namespace Vocal {
 
         private async Gdk.Pixbuf? load_image_async(string url) {
             Gdk.Pixbuf pixbuf = null;
+            GLib.File file = Utils.open_file(url);
 
             try {
-	            pixbuf = new Gdk.Pixbuf.from_stream(soup_client.request(HttpMethod.GET, url), null);
+                GLib.InputStream stream = yield file.read_async ();
+                pixbuf = yield Gdk.Pixbuf.new_from_stream_async (stream);
             } catch (Error e) {
                 warning ("Failed to load image. %s", e.message);
                 return null;

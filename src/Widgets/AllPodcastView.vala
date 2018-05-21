@@ -25,10 +25,12 @@ namespace Vocal {
 
         public Gtk.FlowBox all_flowbox;
         public Gee.ArrayList<CoverArt> all_art;
+        private ImageCache image_cache;
         private Library library;
 
-        public AllPodcastView(Library library) {
+        public AllPodcastView(Library library, ImageCache image_cache) {
             this.library = library;
+            this.image_cache = image_cache;
 
             all_art = new Gee.ArrayList<CoverArt>();
 
@@ -53,7 +55,7 @@ namespace Vocal {
         private Widget create_coverart(Object item) {
             Podcast podcast = item as Podcast;
 
-            CoverArt coverart = new CoverArt(podcast, true);
+            CoverArt coverart = new CoverArt(podcast, image_cache, true);
             coverart.get_style_context().add_class("coverart");
             coverart.halign = Gtk.Align.START;
             coverart.valign = Gtk.Align.START;

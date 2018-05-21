@@ -27,6 +27,7 @@ namespace Vocal {
 
         private Gtk.Box container;
         private iTunesProvider itunes;
+        private ImageCache image_cache;
         private Gtk.FlowBox flowbox;
         private Gtk.Box banner_box;
         public  Gtk.Button return_button;
@@ -39,7 +40,7 @@ namespace Vocal {
 
         private bool top_podcasts_loaded = false;
 
-        public DirectoryView(iTunesProvider itunes_provider, bool first_run = false) {
+        public DirectoryView(iTunesProvider itunes_provider, ImageCache image_cache, bool first_run = false) {
 
             container = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
             add(container);
@@ -99,6 +100,7 @@ namespace Vocal {
             itunes_title.hexpand  = true;
 
             itunes = itunes_provider;
+            this.image_cache = image_cache;
             container.add(banner_box);
             container.add(itunes_title);
             
@@ -138,7 +140,7 @@ namespace Vocal {
                 }
 
                 foreach(DirectoryEntry entry in entries) {
-                    DirectoryArt directory_art = new DirectoryArt(entry.itunesUrl, "%d. %s".printf(i, entry.title), entry.artist, entry.summary, entry.artworkUrl170);
+                    DirectoryArt directory_art = new DirectoryArt(image_cache, entry.itunesUrl, "%d. %s".printf(i, entry.title), entry.artist, entry.summary, entry.artworkUrl170);
                     directory_art.expand = false;
                     directory_art.subscribe_button_clicked.connect((url) => {
                         first_run_continue_button.sensitive = true;

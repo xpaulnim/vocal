@@ -33,7 +33,7 @@ namespace Vocal {
         public Episode episode;
         public Gtk.Box box;
 
-        public QueueListRow(Episode episode) {
+        public QueueListRow(Episode episode, ImageCache image_cache) {
             this.episode = episode;
 
             box = new Gtk.Box(Gtk.Orientation.HORIZONTAL, 10);
@@ -51,14 +51,17 @@ namespace Vocal {
             handle.drag_data_get.connect(on_drag_data_get);
 
             try {
-                // Load the actual cover art
-				var file = GLib.File.new_for_uri(episode.parent.coverart_uri);
-				var icon = new GLib.FileIcon(file);
-				var image = new Gtk.Image.from_gicon(icon, Gtk.IconSize.DIALOG);
-				image.pixel_size = 64;
-                image.margin = 0;
-                image.expand = false;
-                image.get_style_context().add_class("album-artwork");
+                var image = new Gtk.Image();
+
+                image_cache.get_image.begin(episode.parent.coverart_uri, (obj, res) => {
+                    Gdk.Pixbuf pixbuf = image_cache.get_image.end(res);
+                    if(pixbuf != null) {
+                        CoverArt.create_cover_image(image, pixbuf, 64);
+                        image.margin = 0;
+                        image.expand = false;
+                        image.get_style_context().add_class("album-artwork");
+                    }
+                });
 
                 box.pack_start(image, false, false, 0);
             } catch (Error e) {}
