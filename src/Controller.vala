@@ -268,7 +268,8 @@ namespace Vocal {
 
             // Check for updates after 20 seconds
             GLib.Timeout.add (20000, () => {
-                on_update_request();
+                // TODO
+                //  on_update_request();
                 return false;
             });
         
@@ -527,7 +528,7 @@ namespace Vocal {
                     window.toolbar.export_item.sensitive = true;
 
                     // Populate views no matter what
-                    window.populate_views_async();
+                    window.populate_views();
 
                     if(window.current_widget == window.welcome) {
                         window.switch_visible_page(window.all_scrolled);
@@ -625,7 +626,7 @@ namespace Vocal {
                 // Lastly, if there are new episodes, repopulate the views to obtain new counts
                 if(new_episode_count > 0) {
                     info ("Repopulating views after the update process has finished.");
-                    window.populate_views_async();
+                    window.populate_views();
                 }
             } else {
                 info("Vocal is already checking for updates.");

@@ -112,14 +112,14 @@ namespace Vocal {
             }
             
             if (new_episodes_view) {
-			    var file = GLib.File.new_for_uri(episode.parent.coverart_uri);
-			    var icon = new GLib.FileIcon(file);
-			    var image = new Gtk.Image.from_gicon(icon, Gtk.IconSize.DIALOG);
+			    var image = new Gtk.Image();
 			    image.margin = 12;
 			    image.margin_top = 0;
 			    image.margin_bottom = 0;
-			    image.pixel_size = 75;
-			    unplayed_box.pack_start (image, false, false, 0);
+                unplayed_box.pack_start (image, false, false, 0);
+                
+                ImageCache cache = ImageCache.instance();
+                cache.set_image.begin(image, episode.parent.coverart_uri, 75);
             }
 
             // Set up the streaming button

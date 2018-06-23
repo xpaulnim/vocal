@@ -27,6 +27,14 @@ public interface GnomeMediaKeys : GLib.Object {
 public class Utils
 {
 
+    public static File? open_file(string path) {
+        if(path.index_of("file:") == 0 || path.index_of("resource:") == 0 || path.index_of("http:") == 0 || path.index_of("https:") == 0) { 
+            return GLib.File.new_for_uri(path);
+        } else {
+            return GLib.File.new_for_path(path);
+        }
+    }
+
     public static bool check_elementary() {
         string output;
         output = GLib.Environment.get_variable("XDG_CURRENT_DESKTOP");

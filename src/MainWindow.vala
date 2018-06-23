@@ -593,6 +593,10 @@ namespace Vocal {
 	            
 	            info ("Creating coverart for each podcast in library.");
 
+                ulong microseconds;
+                double seconds;
+                Timer timer = new Timer ();
+
                 foreach(Podcast podcast in controller.library.podcasts) {
 
                     // Determine whether or not there are video podcasts
@@ -600,7 +604,7 @@ namespace Vocal {
                         has_video = true;
                     }
                     
-                    CoverArt a = new CoverArt(podcast.coverart_uri.replace("%27", "'"), podcast, true);
+                    CoverArt a = new CoverArt(podcast, true);
                     
                     a.get_style_context().add_class("coverart");
                     a.halign = Gtk.Align.START;
@@ -629,10 +633,14 @@ namespace Vocal {
                     
                 }
 
-	            controller.currently_repopulating = false;
+                controller.currently_repopulating = false;
+                timer.stop ();
+
+                seconds = timer.elapsed (out microseconds);
+                info ("1.1: %s, %lu\n", seconds.to_string (), microseconds);
         	}
 
-            
+
             info("Adding coverart to view.");
 
             foreach(CoverArt a in all_art) {
@@ -644,8 +652,15 @@ namespace Vocal {
                 f.halign = Gtk.Align.CENTER;
                 f.valign = Gtk.Align.START;
             }
+
+            // TODO: Better caching
+            GLib.Timeout.add (20000, () => {
+                //  on_update_request();
+                new_episodes_view.populate_episodes_list ();
+
+                return false;
+            });
             
-            new_episodes_view.populate_episodes_list ();
             
 
             // If the app is supposed to open hidden, don't present the window. Instead, hide it
@@ -654,27 +669,6 @@ namespace Vocal {
                 
         }
 
-        /*
-         * Populates the three views (all, audio, video) from the contents of the controller.library
-         */
-        public async void populate_views_async() {
-        
-
-            SourceFunc callback = populate_views_async.callback;
-
-            ThreadFunc<void*> run = () => {
-
-            	populate_views ();
-
-                Idle.add((owned) callback);
-                return null;
-            };
-
-
-            Thread.create<void*>(run, false);
-
-            yield;
-        }
 
         /*
          * When a user double-clicks and episode in the queue, remove it from the queue and
@@ -910,7 +904,7 @@ namespace Vocal {
                         controller.library_empty = false;
                     }
 
-                    populate_views_async();
+                    populate_views();
 
                     // Make the refresh and export items sensitive now
                     toolbar.export_item.sensitive = true;
@@ -1229,7 +1223,7 @@ namespace Vocal {
                     }
                 }
                 
-                new_episodes_view.populate_episodes_list ();
+                //  new_episodes_view.populate_episodes_list ();
             }
         }
 
@@ -1283,7 +1277,7 @@ namespace Vocal {
                     }
                 }
                 
-                new_episodes_view.populate_episodes_list ();
+                //  new_episodes_view.populate_episodes_list ();
             }
         }
 
@@ -1436,7 +1430,7 @@ namespace Vocal {
 					        controller.library.remove_podcast(controller.highlighted_podcast);
 					        controller.highlighted_podcast = null;
                             switch_visible_page(all_scrolled);
-                            populate_views_async();
+                            populate_views();
 					        break;
 				        case Gtk.ResponseType.NO:
 					        break;
@@ -1634,11 +1628,11 @@ namespace Vocal {
             // Find the cover art in the controller.library and set the new image
             foreach(CoverArt a in all_art) {
                 if(a.podcast == details.podcast) {
-                    GLib.File cover = GLib.File.new_for_path(path);
-                    InputStream input_stream = cover.read();
-                    var pixbuf = a.create_cover_image(input_stream);
+                    //  GLib.File cover = GLib.File.new_for_path(path);
+                    //  InputStream input_stream = cover.read();
+                    //  var pixbuf = a.create_cover_image(input_stream);
                     
-                    a.image.pixbuf = pixbuf;
+                    //  a.image.pixbuf = pixbuf;
                     
                     // Now copy the image to controller.library cache and set it in the db
                     controller.library.set_new_local_album_art(path, a.podcast);

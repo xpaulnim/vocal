@@ -130,17 +130,8 @@ namespace Vocal {
             image.get_style_context().add_class("directory-art-image");
             this.pack_start(image, false, false, 0);
 
-            
-            ImageCache image_cache = new ImageCache();
-            image_cache.get_image.begin(bigartwork, (obj, res) => {
-                Gdk.Pixbuf pixbuf = image_cache.get_image.end(res);
-                if (pixbuf != null) {
-                    image.clear();
-                    image.gicon = pixbuf;
-                    image.pixel_size = 200;
-                }
-            });
-            
+            ImageCache image_cache = ImageCache.instance();
+            image_cache.set_image.begin(image, bigartwork, 200);
 
             this.pack_start(hor_box, false, false, 0);
 

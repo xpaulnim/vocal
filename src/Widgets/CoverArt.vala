@@ -47,7 +47,7 @@ namespace Vocal {
 		/*
 		 * Constructor for CoverArt given an image path and a podcast
 		 */
-		public CoverArt(string path, Podcast podcast, bool? show_mimetype = false) {
+		public CoverArt(Podcast podcast, bool? show_mimetype = false) {
 		
 			this.podcast = podcast;
 			this.margin = 10;
@@ -55,16 +55,13 @@ namespace Vocal {
 			
 
 			try {
-
+				
 				// Load the actual cover art
-				var file = GLib.File.new_for_uri(path.replace("%27", "'"));
 
-				var icon = new GLib.FileIcon(file);
-
-				var image = new Gtk.Image.from_gicon(icon, Gtk.IconSize.DIALOG);
-				image.pixel_size = COVER_SIZE;
-				image.set_no_show_all(false);
-				image.show();
+				image = new Gtk.Image();
+				image.set_alignment(1,0);
+				ImageCache cache = ImageCache.instance();
+				cache.set_image.begin(image, podcast.coverart_uri, COVER_SIZE);
 
 
 	            // Load the banner to be drawn on top of the cover art
@@ -73,7 +70,6 @@ namespace Vocal {
 
 	            // Align everything to the top right corner
 				triangle.set_alignment(1, 0);
-				image.set_alignment(1,0);
 
 				triangle_overlay = new Gtk.Overlay();
 				count_overlay = new Gtk.Overlay();
@@ -83,7 +79,7 @@ namespace Vocal {
 				triangle_overlay.add(image);
 
 			} catch (Error e) {
-				warning ("Unable to load podcast cover art.");
+				warning ("Unable to load podcast cover art. %s", e.message);
 			}
 			
             

@@ -69,15 +69,9 @@ namespace Vocal {
                 image.get_style_context().add_class("album-artwork");
                 content_box.pack_start(image, false, false, 5);
 
-                var image_cache = new ImageCache();
-                image_cache.get_image.begin(podcast.coverart_uri, (obj, res) => {
-                    Gdk.Pixbuf pixbuf = image_cache.get_image.end(res);
-                    if (pixbuf != null) {
-                        image.clear();
-                        pixbuf = pixbuf.scale_simple(32, 32, Gdk.InterpType.BILINEAR);
-                        image.set_from_pixbuf(pixbuf);
-                    }
-                });
+                var image_cache = ImageCache.instance();
+                image_cache.set_image.begin(image, podcast.coverart_uri, 32);
+
                 var label = new Gtk.Label(podcast.name.replace("%27", "'"));
                 label.set_property("xalign", 0);
                 label.ellipsize = Pango.EllipsizeMode.END;
