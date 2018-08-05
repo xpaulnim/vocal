@@ -83,9 +83,9 @@ namespace Vocal {
         public bool fullscreened = false;
         private Gtk.Box parent_box = null;
 
-		/*
-		 * Constructor for the main window. Creates the window and gets everything going.
-		 */
+        /*
+         * Constructor for the main window. Creates the window and gets everything going.
+         */
         public MainWindow (Controller controller) {
         
             this.controller = controller;
@@ -315,8 +315,8 @@ namespace Vocal {
             search_results_box = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
             search_results_scrolled.add (search_results_box);
 
-		    // Set up the IconView for all podcasts
-		    all_flowbox = new Gtk.FlowBox();
+            // Set up the IconView for all podcasts
+            all_flowbox = new Gtk.FlowBox();
             all_art = new Gee.ArrayList<CoverArt>();
             all_flowbox.get_style_context().add_class("notebook-art");
             all_flowbox.selection_mode = Gtk.SelectionMode.SINGLE;
@@ -325,8 +325,8 @@ namespace Vocal {
             all_flowbox.valign = Gtk.Align.FILL;
             all_flowbox.homogeneous = true;
 
-		    all_scrolled.add(all_flowbox);
-		    
+            all_scrolled.add(all_flowbox);
+            
             // Set up all the signals for the podcast view
             details.play_episode_requested.connect(play_different_track);
             details.download_episode_requested.connect(download_episode);
@@ -509,21 +509,16 @@ namespace Vocal {
          * Populates the three views (all, audio, video) from the contents of the controller.library
          */
         public void populate_views() {
-        
-    
-        	if(!controller.currently_repopulating)
-        	{
-
+            if(!controller.currently_repopulating) {
                 info ("Populating the main podcast view.");
-        		controller.currently_repopulating = true;
-	            bool has_video = false;
+                controller.currently_repopulating = true;
+                bool has_video = false;
 
                 // If it's not the first run or newly launched go ahead and remove all the widgets from the flowboxes
                 if(!controller.first_run && !controller.newly_launched) {
-    	            for(int i = 0; i < all_art.size; i++)
-    	            {
-    	            	all_flowbox.remove(all_flowbox.get_child_at_index(0));
-    	            }
+                    for(int i = 0; i < all_art.size; i++) {
+                        all_flowbox.remove(all_flowbox.get_child_at_index(0));
+                    }
 
                     all_art.clear();
                 }
@@ -531,67 +526,67 @@ namespace Vocal {
                 //TODO: Move this to the controller
                 
                 info("Restoring last played media.");
-	            // If the program was just launched, check to see what the last played media was
-	            if(controller.newly_launched) {
+                // If the program was just launched, check to see what the last played media was
+                if(controller.newly_launched) {
 
                     current_widget = all_scrolled;
 
-	                if(controller.settings.last_played_media != null && controller.settings.last_played_media.length > 1) {
+                    if(controller.settings.last_played_media != null && controller.settings.last_played_media.length > 1) {
 
-	                    // Split the media into two different strings
-	                    string[] fields = controller.settings.last_played_media.split(",");
-	                    bool found = false;
-	                    foreach(Podcast podcast in controller.library.podcasts) {
+                        // Split the media into two different strings
+                        string[] fields = controller.settings.last_played_media.split(",");
+                        bool found = false;
+                        foreach(Podcast podcast in controller.library.podcasts) {
 
-	                        if(!found) {
-	                            if(podcast.name == fields[1]) {
-	                                found = true;
+                            if(!found) {
+                                if(podcast.name == fields[1]) {
+                                    found = true;
 
-	                                // Attempt to find the matching episode, set it as the current episode, and display the information in the box
-	                                foreach(Episode episode in podcast.episodes) {
-	                                    if(episode.title == fields[0]){
-	                                        controller.current_episode = episode;
-	                                        toolbar.playback_box.set_info_title(controller.current_episode.title.replace("%27", "'"), controller.current_episode.parent.name.replace("%27", "'"));
-	                                        controller.track_changed(controller.current_episode.title, controller.current_episode.parent.name, controller.current_episode.parent.coverart_uri, (uint64) controller.player.duration);
+                                    // Attempt to find the matching episode, set it as the current episode, and display the information in the box
+                                    foreach(Episode episode in podcast.episodes) {
+                                        if(episode.title == fields[0]){
+                                            controller.current_episode = episode;
+                                            toolbar.playback_box.set_info_title(controller.current_episode.title.replace("%27", "'"), controller.current_episode.parent.name.replace("%27", "'"));
+                                            controller.track_changed(controller.current_episode.title, controller.current_episode.parent.name, controller.current_episode.parent.coverart_uri, (uint64) controller.player.duration);
 
-	                                        try {
+                                            try {
 
-	                                            controller.player.set_episode(controller.current_episode);
+                                                controller.player.set_episode(controller.current_episode);
                                                 controller.player.set_position(controller.current_episode.last_played_position);
-	                                            shownotes.set_notes_text(episode.description);
+                                                shownotes.set_notes_text(episode.description);
 
-	                                        } catch(Error e) {
-	                                            warning(e.message);
-	                                        }
+                                            } catch(Error e) {
+                                                warning(e.message);
+                                            }
 
-	                                        if(controller.current_episode.last_played_position != 0) {
-	                                            toolbar.show_playback_box();
-	                                        }
-	                                        else {
-	                                            toolbar.hide_playback_box();
-	                                        }
-	                                    }
-	                                }
-	                            }
-	                        }
-	                    }
-	                }
-	            }
+                                            if(controller.current_episode.last_played_position != 0) {
+                                                toolbar.show_playback_box();
+                                            }
+                                            else {
+                                                toolbar.hide_playback_box();
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
 
 
-	            // Refill the controller.library based on what is stored in the database (if it's not newly launched, in
-	            // which case it has already been filled)
-	            if(!controller.newly_launched){
-	                info ("Refilling library.");
-	                controller.library.refill_library();
-	            }
+                // Refill the controller.library based on what is stored in the database (if it's not newly launched, in
+                // which case it has already been filled)
+                if(!controller.newly_launched){
+                    info ("Refilling library.");
+                    controller.library.refill_library();
+                }
 
-	            // Clear flags since we have an established controller.library at this point
-	            controller.newly_launched = false;
-	            controller.first_run = false;
-	            controller.library_empty = false;
-	            
-	            info ("Creating coverart for each podcast in library.");
+                // Clear flags since we have an established controller.library at this point
+                controller.newly_launched = false;
+                controller.first_run = false;
+                controller.library_empty = false;
+                
+                info ("Creating coverart for each podcast in library.");
 
                 ulong microseconds;
                 double seconds;
@@ -638,7 +633,7 @@ namespace Vocal {
 
                 seconds = timer.elapsed (out microseconds);
                 info ("1.1: %s, %lu\n", seconds.to_string (), microseconds);
-        	}
+            }
 
 
             info("Adding coverart to view.");
@@ -653,15 +648,7 @@ namespace Vocal {
                 f.valign = Gtk.Align.START;
             }
 
-            // TODO: Better caching
-            GLib.Timeout.add (20000, () => {
-                //  on_update_request();
-                new_episodes_view.populate_episodes_list ();
-
-                return false;
-            });
-            
-            
+            new_episodes_view.populate_episodes_list ();
 
             // If the app is supposed to open hidden, don't present the window. Instead, hide it
             if(!controller.open_hidden && !controller.is_closing)
@@ -1081,9 +1068,9 @@ namespace Vocal {
         }
 
 
-		/*
-		 * Called when multiple episodes are highlighted in the sidepane and the user wishes to delete
-		 */
+        /*
+         * Called when multiple episodes are highlighted in the sidepane and the user wishes to delete
+         */
         public void on_delete_multiple_episodes(Gee.ArrayList<int> indexes) {
             foreach(int i in indexes) {
                 on_episode_delete_request(details.podcast.episodes[i]);
@@ -1091,9 +1078,9 @@ namespace Vocal {
         }
 
 
-		/*
-		 * Called when the user requests to download all episodes from the sidepane
-		 */
+        /*
+         * Called when the user requests to download all episodes from the sidepane
+         */
         public void on_download_all_request() {
             // TODO: Warn user if too many (more than 50?) podcasts will be downloaded.
             foreach(Episode episode in controller.highlighted_podcast.episodes) {
@@ -1134,8 +1121,8 @@ namespace Vocal {
 
 
         /*
-		 * Called when an episode needs to be deleted (locally)
-		 */
+         * Called when an episode needs to be deleted (locally)
+         */
         private void on_episode_delete_request(Episode episode) {
             controller.library.delete_local_episode(episode);
             details.on_single_delete(episode);
@@ -1143,9 +1130,9 @@ namespace Vocal {
 
 
 
-		/*
-		 * Called when the app needs to go fullscreen or unfullscreen
-		 */
+        /*
+         * Called when the app needs to go fullscreen or unfullscreen
+         */
         public void on_fullscreen_request() {
 
             if(fullscreened) {
@@ -1183,27 +1170,27 @@ namespace Vocal {
                 msg.image = image;
                 msg.image.show_all();
 
-			    msg.response.connect ((response_id) => {
-			        switch (response_id) {
-				        case Gtk.ResponseType.YES:
+                msg.response.connect ((response_id) => {
+                    switch (response_id) {
+                        case Gtk.ResponseType.YES:
                             mark_all_as_played_async(controller.highlighted_podcast);
-					        break;
-				        case Gtk.ResponseType.NO:
-					        break;
-			        }
+                            break;
+                        case Gtk.ResponseType.NO:
+                            break;
+                    }
 
-			        msg.destroy();
-		        });
-		        msg.show ();
-	        }
+                    msg.destroy();
+                });
+                msg.show ();
+            }
         }
 
         
 
 
         /*
-		 * Called when an episode needs to be marked as played
-		 */
+         * Called when an episode needs to be marked as played
+         */
         public void on_mark_episode_as_played_request(Episode episode) {
 
             // First check to see the episode is already marked as unplayed
@@ -1228,9 +1215,9 @@ namespace Vocal {
         }
 
 
-		/*
-		 * Called when an episode needs to be marked as unplayed
-		 */
+        /*
+         * Called when an episode needs to be marked as unplayed
+         */
         public void on_mark_episode_as_unplayed_request(Episode episode) {
 
             // First check to see the episode is already marked as unplayed
@@ -1282,10 +1269,10 @@ namespace Vocal {
         }
 
 
-		/*
-		 * Called when multiple episodes are highlighted in the sidepane and the user wishes to
-		 * mark them all as played
-		 */
+        /*
+         * Called when multiple episodes are highlighted in the sidepane and the user wishes to
+         * mark them all as played
+         */
         public void on_mark_multiple_episodes_as_played(Gee.ArrayList<int> indexes) {
             foreach(int i in indexes) {
                 on_mark_episode_as_played_request(details.podcast.episodes[i]);
@@ -1293,10 +1280,10 @@ namespace Vocal {
         }
 
 
-		/*
-		 * Called when multiple episodes are highlighted in the sidepane and the user wishes to
-		 * mark them all as played
-		 */
+        /*
+         * Called when multiple episodes are highlighted in the sidepane and the user wishes to
+         * mark them all as played
+         */
         public void on_mark_multiple_episodes_as_unplayed(Gee.ArrayList<int> indexes) {
             foreach(int i in indexes) {
                 on_mark_episode_as_unplayed_request(details.podcast.episodes[i]);
@@ -1304,9 +1291,9 @@ namespace Vocal {
         }
 
 
-		/*
-		 * Called when the user moves the cursor when a video is playing
-		 */
+        /*
+         * Called when the user moves the cursor when a video is playing
+         */
         private bool on_motion_event(Gdk.EventMotion e) {
 
             // Figure out if you should just move the window
@@ -1424,22 +1411,22 @@ namespace Vocal {
                 msg.image = image;
                 msg.image.show_all();
 
-			    msg.response.connect ((response_id) => {
-			        switch (response_id) {
-				        case Gtk.ResponseType.YES:
-					        controller.library.remove_podcast(controller.highlighted_podcast);
-					        controller.highlighted_podcast = null;
+                msg.response.connect ((response_id) => {
+                    switch (response_id) {
+                        case Gtk.ResponseType.YES:
+                            controller.library.remove_podcast(controller.highlighted_podcast);
+                            controller.highlighted_podcast = null;
                             switch_visible_page(all_scrolled);
                             populate_views();
-					        break;
-				        case Gtk.ResponseType.NO:
-					        break;
-			        }
+                            break;
+                        case Gtk.ResponseType.NO:
+                            break;
+                    }
 
-			        msg.destroy();
-		        });
-		        msg.show ();
-	        }
+                    msg.destroy();
+                });
+                msg.show ();
+            }
         }
 
 
@@ -1578,8 +1565,8 @@ namespace Vocal {
 
 
         /*
-		 * Called when the unplayed count changes and the banner count in the iconviews needs updated
-		 */
+         * Called when the unplayed count changes and the banner count in the iconviews needs updated
+         */
         public void on_unplayed_count_changed(int n) {
             foreach(CoverArt a in all_art)
                 {
@@ -1695,12 +1682,12 @@ namespace Vocal {
 
             controller.is_closing = true;
 
-        	// If flagged to quit immediately, return true to go ahead and do that.
-        	// This flag is usually only set when the user wants to exit while downloads
-        	// are active
-        	if(controller.should_quit_immediately) {
-        		return false;
-        	}
+            // If flagged to quit immediately, return true to go ahead and do that.
+            // This flag is usually only set when the user wants to exit while downloads
+            // are active
+            if(controller.should_quit_immediately) {
+                return false;
+            }
 
             int width, height;
             this.get_size(out width, out height);
@@ -1722,27 +1709,27 @@ namespace Vocal {
                 return true;
             } else if(downloads != null && downloads.downloads.size > 0) {
 
-            	//If there are downloads verify that the user wishes to exit and cancel the downloads
-            	var downloads_active_dialog = new Gtk.MessageDialog(this, Gtk.DialogFlags.MODAL, Gtk.MessageType.WARNING, Gtk.ButtonsType.YES_NO, _("Vocal is currently downloading episodes. Exiting will cause the downloads to be canceled. Are you sure you want to exit?"));
-            	downloads_active_dialog.response.connect ((response_id) => {
-            		downloads_active_dialog.destroy();
-					if(response_id == Gtk.ResponseType.YES) {
-						controller.should_quit_immediately = true;
-						this.close();
-					}
-				});
-				downloads_active_dialog.show();
-				return true;
+                //If there are downloads verify that the user wishes to exit and cancel the downloads
+                var downloads_active_dialog = new Gtk.MessageDialog(this, Gtk.DialogFlags.MODAL, Gtk.MessageType.WARNING, Gtk.ButtonsType.YES_NO, _("Vocal is currently downloading episodes. Exiting will cause the downloads to be canceled. Are you sure you want to exit?"));
+                downloads_active_dialog.response.connect ((response_id) => {
+                    downloads_active_dialog.destroy();
+                    if(response_id == Gtk.ResponseType.YES) {
+                        controller.should_quit_immediately = true;
+                        this.close();
+                    }
+                });
+                downloads_active_dialog.show();
+                return true;
             } else {
-            	// If no downloads are active and nothing is playing,
-            	// return false to allow other handlers to close the window.
-            	return false;
-        	}
+                // If no downloads are active and nothing is playing,
+                // return false to allow other handlers to close the window.
+                return false;
+            }
         }
 
-		/*
-		 * Handler for when the window state changes
-		 */
+        /*
+         * Handler for when the window state changes
+         */
         private void on_window_state_changed(Gdk.WindowState state) {
 
             if(controller.open_hidden) {

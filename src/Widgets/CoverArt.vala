@@ -55,14 +55,11 @@ namespace Vocal {
 			
 
 			try {
-				
 				// Load the actual cover art
 
 				image = new Gtk.Image();
 				image.set_alignment(1,0);
-				ImageCache cache = ImageCache.instance();
-				cache.set_image.begin(image, podcast.coverart_uri, COVER_SIZE);
-
+				ImageCache.instance().set_image.begin(image, podcast.coverart_uri, 170);
 
 	            // Load the banner to be drawn on top of the cover art
 				var triangle_pixbuf = new Gdk.Pixbuf.from_resource_at_scale("/com/github/needle-and-thread/vocal/banner.png", 75, 75, true);

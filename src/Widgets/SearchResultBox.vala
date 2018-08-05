@@ -69,8 +69,7 @@ namespace Vocal {
                 image.get_style_context().add_class("album-artwork");
                 content_box.pack_start(image, false, false, 5);
 
-                var image_cache = ImageCache.instance();
-                image_cache.set_image.begin(image, podcast.coverart_uri, 32);
+                ImageCache.instance().set_image.begin(image, podcast.coverart_uri, 32);
 
                 var label = new Gtk.Label(podcast.name.replace("%27", "'"));
                 label.set_property("xalign", 0);

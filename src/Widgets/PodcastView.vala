@@ -512,19 +512,17 @@ namespace Vocal {
             this.podcast = podcast;
 
         	if(image != null) {
-        		image_box.remove(image);
-        		image = null;
-        	}
-
-        	try {
-			    var cover = GLib.File.new_for_uri(podcast.coverart_uri);
-                var icon = new GLib.FileIcon(cover);
-				image = new Gtk.Image.from_gicon(icon, Gtk.IconSize.DIALOG);
-                image.pixel_size = 250;
-                image.margin = 0;
+        		image.clear();
+        	} else {
+                image = new Gtk.Image();
                 image.get_style_context().add_class("podcast-view-coverart");
+                image.margin = 0;
 
             	image_box.pack_start(image, true, true, 0);
+            }
+
+        	try {
+                ImageCache.instance().set_image.begin(image, podcast.coverart_uri, 250);
             } catch (Error e) {
                 error(e.message);
             }

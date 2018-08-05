@@ -58,11 +58,10 @@ namespace Vocal {
             string title = episode.title;
             string parent_podcast_name = episode.parent.name;
 
-			// Load the actual cover art
-			var file = GLib.File.new_for_uri(episode.parent.coverart_uri);
-			var icon = new GLib.FileIcon(file);
-			var image = new Gtk.Image.from_gicon(icon, Gtk.IconSize.DIALOG);
-			image.pixel_size = 64;
+            // Load the actual cover art
+            ImageCache image_cache = ImageCache.instance();
+			var image = new Gtk.Image();
+			image_cache.set_image(image, episode.parent.coverart_uri, 64);
 
             this.episode_title = title;
             this.parent_podcast_name = parent_podcast_name;

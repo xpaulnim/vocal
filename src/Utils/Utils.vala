@@ -24,8 +24,7 @@ public interface GnomeMediaKeys : GLib.Object {
     public signal void MediaPlayerKeyPressed (string application, string key);
 }
 
-public class Utils
-{
+public class Utils {
 
     public static File? open_file(string path) {
         if(path.index_of("file:") == 0 || path.index_of("resource:") == 0 || path.index_of("http:") == 0 || path.index_of("https:") == 0) { 
@@ -51,8 +50,7 @@ public class Utils
 	 * A convenience method that sends a generic notification with a message and title
 	 * (assuming libnotify is enabled)
 	 */
-    public static void send_generic_notification(string message, string? title = "Vocal")
-    {
+    public static void send_generic_notification(string message, string? title = "Vocal") {
 #if HAVE_LIBNOTIFY
         var notification = new Notify.Notification(title, message, "vocal");
         notification.show();
@@ -92,6 +90,14 @@ public class Utils
         }
         
         return new_url;
+    }
+
+    public static async void nap (uint interval, int priority = GLib.Priority.DEFAULT) {
+        GLib.Timeout.add (interval, () => {
+            nap.callback ();
+            return false;
+        }, priority);
+        yield;
     }
 
 	/*
